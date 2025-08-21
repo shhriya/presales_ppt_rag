@@ -57,8 +57,8 @@ async function handleSend(question) {
   return (
     <div className="app">
       <div className="header">
-        <h1>PPT Chatbot</h1>
-        <div className="sub">Upload a .pptx and ask anything.</div>
+        <h1>PreSales Insight Bot</h1>
+        <div className="sub">AI assistant for exploring and managing presales presentation content.</div>
       </div>
  
       <div className="panel" style={{ marginBottom: 12 }}>
