@@ -51,7 +51,7 @@ pptdemo/
 🔹 Backend (FastAPI)
 
 Clone repo:
-git clone https://github.com/shhriya/pptdemo.git
+git clone https://github.com/shhriya/presales_ppt_rag.git
 cd pptdemo/backend
 
 Create virtual environment + install deps:
