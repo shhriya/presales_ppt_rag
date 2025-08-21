@@ -52,7 +52,7 @@ pptdemo/
 
 Clone repo:
 git clone https://github.com/shhriya/presales_ppt_rag.git
-cd pptdemo/backend
+cd presales_ppt_rag/backend
 
 Create virtual environment + install deps:
 python -m venv .venv
