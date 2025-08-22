@@ -38,13 +38,16 @@ export default function Chat({ messages, disabled, onSend }) {
 
       <div className="chat-input">
         <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}   // ✅ catch Enter here
-          placeholder="Ask about your presentation..."
-          disabled={disabled}
-        />
+  id="chat-input"
+  name="chatInput"
+  type="text"
+  value={input}
+  onChange={(e) => setInput(e.target.value)}
+  onKeyDown={handleKeyDown}
+  placeholder="Ask about your presentation..."
+  disabled={disabled}
+/>
+
         <button type="button" onClick={handleSend} disabled={disabled}>
           Send
         </button>
