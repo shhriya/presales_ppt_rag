@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import faiss
 import subprocess
-
+from crud import register_chunks
 # Load env vars
 load_dotenv()
 
@@ -72,6 +72,17 @@ async def upload_ppt(file: UploadFile = File(...)):
     ppt_path = os.path.join(session_path, "presentation.pptx")
     with open(ppt_path, "wb") as f:
         f.write(await file.read())
+    
+    pdf_path = os.path.join(session_path, "presentation.pdf")
+    try:
+        subprocess.run([
+        r"C:\Program Files\LibreOffice\program\soffice.exe", "--headless", "--convert-to", "pdf", ppt_path, "--outdir", session_path
+    ], check=True)
+    except Exception as e:
+         print("PDF conversion failed:", e)
+    
+    print("DEBUG: ppt_path exists?", os.path.exists(ppt_path))
+    print("DEBUG: pdf_path exists?", os.path.exists(pdf_path))
 
     # Extract media & OCR
     extracted_dir = os.path.join(session_path, "extracted_files")
@@ -80,12 +91,23 @@ async def upload_ppt(file: UploadFile = File(...)):
 
     # Extract slide text + OCR text
     slides_data = extract_presentation_content(ppt_path, image_text_map)
-
+    
+#     ensure_session(session_id)
+#     file_id = register_file(
+#     session_id=session_id,
+#     original_filename=file.filename,
+#     stored_filepath=ppt_path,
+#     storage_dir=session_path,
+#     slides_data=slides_data
+# )
+    
+    # slides = get_slides(file_id)
     # Build FAISS index
     index_path = os.path.join(session_path, "ppt_faiss.index")
     chunks_json_path = os.path.join(session_path, "ppt_chunks.json")
     index, texts, metadata = build_faiss_index(slides_data, index_path, chunks_json_path)
-
+   
+    # register_chunks(metadata)
     # Store session in-memory (unchanged logic)
     SESSIONS[session_id] = {"index": index, "texts": texts, "metadata": metadata}
 
@@ -97,9 +119,12 @@ async def upload_ppt(file: UploadFile = File(...)):
                       stored_filepath=ppt_path,
                       storage_dir=session_path,
                       slides_data=slides_data)
+        # register_chunks(metadata)
     except Exception as e:
         print("Warning: DB register failed:", e)
+    
 
+    
     return {"session_id": session_id, "slides": len(slides_data)}
 
 
@@ -141,25 +166,26 @@ def delete_session(session_id: str):
 # --------------------
 @app.get("/api/files")
 def api_list_files(session_id: str = None):
-    """
-    GET /api/files?session_id=<session_id>
-    Returns PPT files with a proper download_url that the frontend can use.
-    """
     try:
         rows = get_files(session_id)
         files = []
+        print("DEBUG: Found rows:", rows)
         for r in rows:
-            # assume stored_filepath = /.../sessions/<session_id>/presentation.pptx
             session_id = r["session_id"]
             download_url = f"/static/{session_id}/presentation.pptx"
+            pdf_path = os.path.join(SESSIONS_DIR, session_id, "presentation.pdf")
+            pdf_preview_url = f"/static/{session_id}/presentation.pdf" if os.path.exists(pdf_path) else None
+            print(f"DEBUG: session_id={session_id}, download_url={download_url}, pdf_preview_url={pdf_preview_url}")
             files.append({
                 **r,
-                "download_url": download_url
+                "download_url": download_url,
+                "pdf_preview": pdf_preview_url
             })
+        print("DEBUG: Returning files:", files)
         return {"files": files}
     except Exception as e:
+        print("ERROR in /api/files:", e)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.get("/api/files/{file_id}")
 def api_get_file(file_id: str):
@@ -179,17 +205,32 @@ def api_get_slides(file_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/api/chunks")
-def api_get_chunks(file_id: str = None, slide_index: int = None, limit: int = 100, offset: int = 0):
+def api_list_chunks(session_id: str):
+    if not session_id or session_id == "null":
+        raise HTTPException(status_code=400, detail="session_id is required")
     try:
-        result = get_chunks(file_id=file_id, slide_index=slide_index, limit=limit, offset=offset)
-        return result
+        rows = get_chunks(session_id)
+        chunks = []
+        for r in rows:
+            # If r is a string, fix your get_chunks to return dicts!
+            if isinstance(r, dict):
+                chunks.append({
+                    "id": r.get("id"),
+                    "chunk_number": r.get("chunk_number"),
+                    "content": r.get("content")
+                })
+            else:
+                # fallback: treat r as content only
+                chunks.append({
+                    "id": None,
+                    "chunk_number": None,
+                    "content": r
+                })
+        return {"chunks": chunks}
     except Exception as e:
+        print("ERROR in /api/chunks:", e)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
 
 
 
