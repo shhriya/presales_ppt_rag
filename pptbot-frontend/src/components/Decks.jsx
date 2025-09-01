@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { listFiles , BASE_URL} from "../api/api";
+import { listFiles, BASE_URL } from "../api/api";
 
 export default function Decks() {
   const [files, setFiles] = useState([]);
@@ -19,6 +19,29 @@ export default function Decks() {
   useEffect(() => {
     loadFiles();
   }, []);
+
+  // ✅ helper: detect ppt type
+  function isPPT(file) {
+    if (!file?.original_filename) return false;
+    const lower = file.original_filename.toLowerCase();
+    return lower.endsWith(".ppt") || lower.endsWith(".pptx");
+  }
+
+  // ✅ helper: get preview URL (PDF for PPTs, otherwise normal preview)
+const getFilePreviewUrl = (f) => {
+  if (f.original_filename.endsWith(".ppt") || f.original_filename.endsWith(".pptx")) {
+    return `${BASE_URL}/convert-ppt-to-pdf/${f.session_id}/${f.original_filename}`;
+  }
+  return `${BASE_URL}${f.preview_url}`;
+};
+
+// const getFilePreviewUrl = (f) => {
+//   if (isPPT(f)) {
+//     // ✅ Only need filename now, backend searches sessions automatically
+//     return `${BASE_URL}/convert-ppt-to-pdf/${f.original_filename}`;
+//   }
+//   return `${BASE_URL}${f.preview_url}`;
+// };
 
   return (
     <div>
@@ -83,7 +106,7 @@ export default function Decks() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {f.preview_url && (
                     <button className="btn" onClick={() => setSelectedFile(f)}>
-                      Open
+                      {isPPT(f) ? "Open PPT" : "Open"}
                     </button>
                   )}
                 </div>
@@ -94,7 +117,7 @@ export default function Decks() {
       </div>
 
       {/* Full screen modal for file preview */}
-      {selectedFile && selectedFile.preview_url && (
+      {selectedFile && (selectedFile.preview_url || isPPT(selectedFile)) && (
         <div
           style={{
             position: "fixed",
@@ -144,7 +167,7 @@ export default function Decks() {
               Close
             </button>
             <iframe
-              src={`${BASE_URL}${selectedFile.preview_url}`}
+              src={getFilePreviewUrl(selectedFile)}
               width="100%"
               height="100%"
               style={{ border: "none", borderRadius: "12px", background: "#fff" }}
@@ -156,5 +179,3 @@ export default function Decks() {
     </div>
   );
 }
-
-

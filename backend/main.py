@@ -1,7 +1,6 @@
-# main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import auth, upload, sessions, files, ask
+from backend.routers import auth, upload, sessions, files, ask, convert  # 👈 added convert
 
 app = FastAPI()
 
@@ -24,3 +23,4 @@ app.include_router(upload.router)
 app.include_router(sessions.router)
 app.include_router(files.router)
 app.include_router(ask.router)
+app.include_router(convert.router)  # 👈 new router
