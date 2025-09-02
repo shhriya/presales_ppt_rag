@@ -61,17 +61,21 @@ async def upload_file(file: UploadFile = File(...)):
     SESSIONS[session_id] = {"index": index, "texts": texts, "metadata": metadata}
     print(f"🧠 Session stored in memory")
 
-    # 8️⃣ Try DB registration, but don’t fail session creation if DB fails
+    # 8️⃣ Try DB registration, but don't fail session creation if DB fails
     try:
-        ensure_session(session_id)
-        register_file(session_id, file.filename, file_path, session_path, slides_data)
+        # TODO: Get user_id from authentication context
+        user_id = 1  # Placeholder - should come from auth
+        ensure_session(session_id, user_id)
+        register_file(session_id, file.filename, user_id, file_path, session_path, slides_data)
         print(f"✅ Registered file in DB")
     except Exception as e:
         print(f"⚠️ Warning: DB register failed: {e}")
 
-    # 9️⃣ Return session info to frontend
+    # 9️⃣ Return session info to frontend with file_id that matches expected format
+    file_id = f"{session_id}_{file.filename}"
     return {
         "session_id": session_id,
+        "file_id": file_id,
         "items_count": len(slides_data),
         "indexed_chunks": len(texts) if texts else 0,
         "filename": file.filename

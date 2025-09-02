@@ -2,7 +2,7 @@ import { useState } from "react";
 import "../assets/style.css";
 import { uploadFile, askQuestion } from "../api/api.js";
 import Chat from "../components/Chat";
-import Decks from "../components/Decks.jsx";
+import Groups from "../components/Groups.jsx";
 import Chunks from "../components/Chunks";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -52,10 +52,10 @@ export default function TabsApp() {
   }
 
   const visibleTabs = {
-    admin: ["chat", "decks", "chunks"],
-    developer: ["decks", "chunks"],
-    employee: ["chat"],
-    client: ["chat"]
+    admin: ["chat", "groups", "chunks"],
+    developer: ["groups", "chunks"],
+    employee: ["chat", "groups"],
+    client: ["chat", "groups"]
   };
 
   const tabsToShow = visibleTabs[userRole] || ["chat"];
@@ -82,8 +82,8 @@ export default function TabsApp() {
         {tabsToShow.includes("chat") && (
           <button className="btn" onClick={() => setActiveTab("chat")} style={{ opacity: activeTab === "chat" ? 1 : 0.7 }}>Chat</button>
         )}
-        {tabsToShow.includes("decks") && (
-          <button className="btn" onClick={() => setActiveTab("decks")} style={{ opacity: activeTab === "decks" ? 1 : 0.7 }}>Decks</button>
+        {tabsToShow.includes("groups") && (
+          <button className="btn" onClick={() => setActiveTab("groups")} style={{ opacity: activeTab === "groups" ? 1 : 0.7 }}>Groups</button>
         )}
         {tabsToShow.includes("chunks") && (
           <button className="btn" onClick={() => setActiveTab("chunks")} style={{ opacity: activeTab === "chunks" ? 1 : 0.7 }}>Chunks</button>
@@ -121,9 +121,9 @@ export default function TabsApp() {
         </>
       )}
 
-      {activeTab === "decks" && tabsToShow.includes("decks") && (
+      {activeTab === "groups" && tabsToShow.includes("groups") && (
         <div className="panel">
-          <Decks sessionId={sessionId} />
+          <Groups />
         </div>
       )}
 

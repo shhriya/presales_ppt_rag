@@ -1,5 +1,5 @@
 // api.js
-export const BASE_URL = "http://localhost:9000";
+export const BASE_URL = "http://localhost:8000";
 
 
 // Upload any file (ppt, pdf, docx, etc.)
@@ -63,6 +63,53 @@ export async function login(email, password) {
     throw new Error(`Login failed: ${res.status}`);
   }
 
+  return res.json();
+}
+
+// Group Management APIs
+export async function listGroups() {
+  const res = await fetch(`${BASE_URL}/api/groups`);
+  if (!res.ok) throw new Error((await res.json()).detail || "Failed to fetch groups");
+  return res.json();
+}
+
+export async function getGroupFiles(groupId) {
+  const res = await fetch(`${BASE_URL}/api/groups/${groupId}/files`);
+  if (!res.ok) throw new Error((await res.json()).detail || "Failed to fetch group files");
+  return res.json();
+}
+
+export async function createGroup(name, description = "") {
+  const res = await fetch(`${BASE_URL}/api/groups`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, description }),
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || "Failed to create group");
+  return res.json();
+}
+
+export async function addFileToGroup(fileId, groupId) {
+  const res = await fetch(`${BASE_URL}/api/groups/${groupId}/files`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file_id: fileId, group_id: groupId }),
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || "Failed to add file to group");
+  return res.json();
+}
+
+export async function removeFileFromGroup(fileId, groupId) {
+  const res = await fetch(`${BASE_URL}/api/groups/${groupId}/files/${fileId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || "Failed to remove file from group");
+  return res.json();
+}
+
+export async function getMyFiles() {
+  const res = await fetch(`${BASE_URL}/api/files/my`);
+  if (!res.ok) throw new Error((await res.json()).detail || "Failed to fetch my files");
   return res.json();
 }
 

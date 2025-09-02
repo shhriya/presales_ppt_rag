@@ -42,6 +42,57 @@ def api_list_files():
     files_list = list_session_files(SESSIONS_DIR)
     return {"files": files_list}
 
+@router.get("/api/files/my")
+def api_get_my_files():
+    """Get all files the current user has access to"""
+    # For now, return all files since we don't have user-specific filtering yet
+    files_list = list_session_files(SESSIONS_DIR)
+    return files_list
+
+@router.get("/files/{file_id}")
+def get_file_by_id(file_id: str):
+    """Get file by file_id (format: session_id_filename)"""
+    try:
+        # Parse file_id to get session_id and filename
+        if "_" not in file_id:
+            raise HTTPException(status_code=400, detail="Invalid file_id format")
+        
+        session_id, filename = file_id.split("_", 1)
+        file_path = os.path.join(SESSIONS_DIR, session_id, filename)
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Determine content type
+        media_type, _ = mimetypes.guess_type(file_path)
+        if media_type is None:
+            media_type = "application/octet-stream"
+        
+        return FileResponse(file_path, media_type=media_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving file: {str(e)}")
+
+@router.get("/files/{file_id}/download")
+def download_file_by_id(file_id: str):
+    """Download file by file_id (format: session_id_filename)"""
+    try:
+        # Parse file_id to get session_id and filename
+        if "_" not in file_id:
+            raise HTTPException(status_code=400, detail="Invalid file_id format")
+        
+        session_id, filename = file_id.split("_", 1)
+        file_path = os.path.join(SESSIONS_DIR, session_id, filename)
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        return FileResponse(
+            file_path, 
+            media_type="application/octet-stream",
+            filename=filename
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
 
 @router.get("/files/sessions/{session_id}/{filename}/preview")
 def preview_session_file(session_id: str, filename: str):
