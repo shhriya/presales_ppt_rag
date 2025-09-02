@@ -66,6 +66,7 @@ export async function login(email, password) {
   return res.json();
 }
 
+<<<<<<< HEAD
 // Group Management APIs
 export async function listGroups() {
   const res = await fetch(`${BASE_URL}/api/groups`);
@@ -113,3 +114,34 @@ export async function getMyFiles() {
   return res.json();
 }
 
+=======
+export async function convertPptToPdf(sessionId, filename) {
+  try {
+    const response = await fetch(
+      `${BASE_URL}/convert-ppt-to-pdf/${sessionId}/${filename}`,
+      {
+        method: "GET",
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Conversion failed: ${response.status}`);
+    }
+
+    // PDF Blob
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    // Auto-download
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename.replace(/\.[^/.]+$/, ".pdf"); // change extension to .pdf
+    link.click();
+
+    return { success: true };
+  } catch (err) {
+    console.error("❌ Error converting PPT to PDF:", err);
+    return { success: false, error: err.message };
+  }
+}
+>>>>>>> 44258f956ac57b15c46f220e3d9c32037fd2f258

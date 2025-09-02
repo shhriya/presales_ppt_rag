@@ -1,8 +1,14 @@
+<<<<<<< HEAD
 # main.py
 from fastapi import FastAPI, Form, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import auth, upload, sessions, files, ask, groups
 from backend.database import add_file_to_group
+=======
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from backend.routers import auth, upload, sessions, files, ask, convert  # 👈 added convert
+>>>>>>> 44258f956ac57b15c46f220e3d9c32037fd2f258
 
 app = FastAPI()
 
@@ -44,4 +50,8 @@ app.include_router(upload.router)
 app.include_router(sessions.router)
 app.include_router(files.router)
 app.include_router(ask.router)
+<<<<<<< HEAD
 app.include_router(groups.router)
+=======
+app.include_router(convert.router)  # 👈 new router
+>>>>>>> 44258f956ac57b15c46f220e3d9c32037fd2f258
