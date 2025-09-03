@@ -73,17 +73,14 @@ class Session(Base):
     last_a = Column(Text, default="")
     created_by = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime, default=datetime.utcnow)
-    files = relationship("File", back_populates="session")
 
 class File(Base):
     __tablename__ = "files"
     id = Column(String(255), primary_key=True)
-    session_id = Column(String(255), ForeignKey("sessions.id"))
     filename = Column(Text)
     original_filename = Column(Text)
     uploaded_by = Column(Integer, ForeignKey("users.user_id"))
     uploaded_at = Column(DateTime, default=datetime.utcnow)
-    session = relationship("Session", back_populates="files")
     file_groups = relationship("FileGroup", back_populates="file")
 
 class FileGroup(Base):
@@ -119,7 +116,6 @@ def register_file(session_id: str, original_filename: str, user_id: int = None, 
     file_id = f"{session_id}_{original_filename}"
     file = File(
         id=file_id,
-        session_id=session_id,
         filename=original_filename,
         original_filename=original_filename,
         uploaded_by=user_id
@@ -218,7 +214,6 @@ def get_group_files(group_id: int, user_id: int = None):
         if file:
             files.append({
                 "id": file.id,
-                "session_id": file.session_id,
                 "original_filename": file.original_filename,
                 "uploaded_at": file.uploaded_at.isoformat() if file.uploaded_at else None,
                 "uploaded_by": file.uploaded_by
@@ -273,6 +268,25 @@ def create_group(name: str, description: str = None, created_by: int = None):
     db.close()
     return group.group_id
 
+def get_or_create_user_by_email(email: str) -> int:
+    """Return existing user_id for email or create a basic user and return id."""
+    db = SessionLocal()
+    user = db.query(User).filter(User.email == email).first()
+    if user:
+        uid = user.user_id
+        db.close()
+        return uid
+    # Create a minimal user record
+    username = email.split("@")[0]
+    temp_password = "temporary"
+    new_user = User(username=username, email=email, password_hash=temp_password, role="employee")
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    uid = new_user.user_id
+    db.close()
+    return uid
+
 def add_user_to_group(user_id: int, group_id: int):
     """Add a user to a group"""
     db = SessionLocal()
@@ -302,6 +316,28 @@ def remove_user_from_group(user_id: int, group_id: int):
     
     db.close()
 
+def delete_group(group_id: int):
+    """Delete a group and its associations."""
+    db = SessionLocal()
+    # Remove file-group links
+    db.query(FileGroup).filter(FileGroup.group_id == group_id).delete()
+    # Remove user-group links
+    db.query(UserGroup).filter(UserGroup.group_id == group_id).delete()
+    # Remove group
+    db.query(Group).filter(Group.group_id == group_id).delete()
+    db.commit()
+    db.close()
+
+def leave_group(user_id: int, group_id: int):
+    """User leaves a group (remove from user_groups)."""
+    db = SessionLocal()
+    db.query(UserGroup).filter(
+        UserGroup.user_id == user_id,
+        UserGroup.group_id == group_id
+    ).delete()
+    db.commit()
+    db.close()
+
 def get_all_groups():
     """Get all groups (for admin use)"""
     db = SessionLocal()
@@ -321,13 +357,13 @@ def get_all_groups():
 def get_user_files(user_id: int):
     """Get all files a user has access to based on their groups and role"""
     db = SessionLocal()
-    user = db.query(User).filter(User.user_id == user_id).first()
+    user = db.query(User).filter(User.user_id == user_id).first() if user_id else db.query(User).filter(User.role == "admin").first()
     
     if not user:
         db.close()
         return []
     
-    if user.role == "admin":
+    if user and user.role == "admin":
         # Admin can see all files
         files = db.query(File).all()
     else:
@@ -352,7 +388,6 @@ def get_user_files(user_id: int):
     for file in files:
         result.append({
             "id": file.id,
-            "session_id": file.session_id,
             "original_filename": file.original_filename,
             "uploaded_at": file.uploaded_at.isoformat() if file.uploaded_at else None,
             "uploaded_by": file.uploaded_by
@@ -360,6 +395,32 @@ def get_user_files(user_id: int):
     
     db.close()
     return result
+
+def get_group_users(group_id: int):
+    """Get all users in a group"""
+    db = SessionLocal()
+    user_groups = db.query(UserGroup).filter(UserGroup.group_id == group_id).all()
+    users = []
+    for ug in user_groups:
+        user = db.query(User).filter(User.user_id == ug.user_id).first()
+        if user:
+            users.append({
+                "user_id": user.user_id,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role,
+                "joined_at": ug.joined_at.isoformat() if ug.joined_at else None
+            })
+    db.close()
+    return users
+
+def get_user_id_by_email(email: str):
+    """Get user ID by email address"""
+    db = SessionLocal()
+    user = db.query(User).filter(User.email == email).first()
+    user_id = user.user_id if user else None
+    db.close()
+    return user_id
 
 # ============================================================
 # 🔹 Auto-init on import

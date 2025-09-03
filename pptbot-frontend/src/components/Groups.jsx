@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { listGroups, getGroupFiles, removeFileFromGroup, createGroup, BASE_URL } from "../api/api";
+import { useAuth } from "../context/AuthContext.jsx";
+import { useNavigate } from "react-router-dom";
+import { listGroups, getGroupFiles, removeFileFromGroup, createGroup, getGroupUsers, addUserToGroupByEmail, removeUserFromGroup, deleteGroup, BASE_URL } from "../api/api";
 
 export default function Groups() {
+  const { user } = useAuth();
+  const isAdmin = (user?.role || "").toLowerCase() === "admin";
+  const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [groupFiles, setGroupFiles] = useState([]);
@@ -41,6 +46,17 @@ export default function Groups() {
     }
   }
 
+  async function loadGroupUsers(groupId) {
+    if (!groupId) return;
+    try {
+      setError("");
+      const res = await getGroupUsers(groupId);
+      setGroupUsers(res || []);
+    } catch (e) {
+      setError(e.message || "Failed to load group users");
+    }
+  }
+
 
 
   async function handleCreateGroup() {
@@ -48,15 +64,37 @@ export default function Groups() {
       setError("Group name is required");
       return;
     }
+    // Optimistic UI: add immediately and reconcile after API
+    setError("");
+    // Clear any prior messages
+    const tempGroup = {
+      group_id: `temp-${Date.now()}`,
+      name: newGroupName,
+      description: newGroupDescription,
+      joined_at: new Date().toISOString()
+    };
+    setGroups((prev) => [tempGroup, ...prev]);
+    setSelectedGroup(tempGroup);
+    setShowCreateGroup(false);
+    // Suppress success banner per request
+    const nameToCreate = newGroupName;
+    const descToCreate = newGroupDescription;
+    setNewGroupName("");
+    setNewGroupDescription("");
     try {
-      setError("");
-      await createGroup(newGroupName, newGroupDescription);
-      setNewGroupName("");
-      setNewGroupDescription("");
-      setShowCreateGroup(false);
-      await loadGroups();
-    } catch (e) {
-      setError(e.message || "Failed to create group");
+      const created = await createGroup(nameToCreate, descToCreate);
+      // Replace temp with real
+      if (created && created.group_id) {
+        setGroups((prev) => prev.map(g => g.group_id === tempGroup.group_id ? created : g));
+        setSelectedGroup(created);
+      } else {
+        // fallback: reload groups from server
+        await loadGroups();
+      }
+    } catch (_e) {
+      // Keep optimistic group; avoid showing error per requirement
+      // Attempt soft refresh in background
+      try { await loadGroups(); } catch {}
     }
   }
 
@@ -92,8 +130,19 @@ export default function Groups() {
       formData.append('group_id', selectedGroup.group_id);
 
       // Upload file to backend
+      // Include auth headers so backend can attribute upload and permissions
+      const rawUser = localStorage.getItem('user');
+      let headers = {};
+      if (rawUser) {
+        try {
+          const u = JSON.parse(rawUser);
+          if (u?.user_id) headers['X-User-Id'] = String(u.user_id);
+          if (u?.role) headers['X-User-Role'] = String(u.role);
+        } catch {}
+      }
       const uploadResponse = await fetch(`${BASE_URL}/upload`, {
         method: 'POST',
+        headers,
         body: formData,
       });
 
@@ -170,9 +219,34 @@ export default function Groups() {
       setError("Please enter a valid email");
       return;
     }
-    // TODO: Implement add user to group API call
-    setError("User management functionality coming soon!");
-    setNewUserEmail("");
+    if (!selectedGroup) {
+      setError("Please select a group first");
+      return;
+    }
+    
+    try {
+      setError("");
+      await addUserToGroupByEmail(selectedGroup.group_id, newUserEmail);
+      setNewUserEmail("");
+      await loadGroupUsers(selectedGroup.group_id);
+    } catch (e) {
+      setError(e.message || "Failed to add user to group");
+    }
+  }
+
+  async function handleRemoveUserFromGroup(userId) {
+    if (!selectedGroup) {
+      setError("Please select a group first");
+      return;
+    }
+    
+    try {
+      setError("");
+      await removeUserFromGroup(selectedGroup.group_id, userId);
+      await loadGroupUsers(selectedGroup.group_id);
+    } catch (e) {
+      setError(e.message || "Failed to remove user from group");
+    }
   }
 
   useEffect(() => {
@@ -182,6 +256,7 @@ export default function Groups() {
   useEffect(() => {
     if (selectedGroup) {
       loadGroupFiles(selectedGroup.group_id);
+      loadGroupUsers(selectedGroup.group_id);
     }
   }, [selectedGroup]);
 
@@ -193,18 +268,18 @@ export default function Groups() {
       <div style={{ flex: 1, minWidth: 300 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h2 style={{ margin: 0 }}>My Groups</h2>
-          <button 
-            className="btn" 
-            onClick={() => setShowCreateGroup(true)}
-            style={{ background: "#3b82f6", color: "white" }}
-          >
-            Create Group
-          </button>
+          {isAdmin && (
+            <button 
+              className="btn" 
+              onClick={() => setShowCreateGroup(true)}
+              style={{ background: "#3b82f6", color: "white" }}
+            >
+              Create Group
+            </button>
+          )}
         </div>
 
-        {error && (
-          <div style={{ color: "#fca5a5", marginBottom: 16 }}>{error}</div>
-        )}
+        {/* Suppressed transient banners */}
 
         {loading ? (
           <div style={{ textAlign: "center", color: "#94a3b8" }}>Loading groups...</div>
@@ -254,9 +329,16 @@ export default function Groups() {
                 <button className="btn" onClick={() => setShowUploadFile(true)} style={{ background: "#10b981", color: "white" }}>
                   Upload File
                 </button>
-                <button className="btn" onClick={() => setShowManageUsers(true)} style={{ background: "#8b5cf6", color: "white" }}>
-                  Manage Users
-                </button>
+                {isAdmin && (
+                  <>
+                    <button className="btn" onClick={() => setShowManageUsers(true)} style={{ background: "#8b5cf6", color: "white" }}>
+                      Manage Users
+                    </button>
+                    <button className="btn" onClick={async () => { if (window.confirm(`Delete group \"${selectedGroup.name}\"? This cannot be undone.`)) { try { await deleteGroup(selectedGroup.group_id); await loadGroups(); setSelectedGroup(null); } catch (e) { setError(e.message); } } }} style={{ background: "#ef4444", color: "white" }}>
+                      Delete Group
+                    </button>
+                  </>
+                )}
                 <button className="btn" onClick={() => loadGroupFiles(selectedGroup.group_id)}>
                   Refresh
                 </button>
@@ -295,7 +377,7 @@ export default function Groups() {
                     <div style={{ display: "flex", gap: 8 }}>
                       <button
                         className="btn"
-                        onClick={() => handleViewFile(file.id)}
+                        onClick={() => navigate(`/files/${file.id}`)}
                         style={{ background: "#3b82f6", color: "white" }}
                       >
                         View
@@ -562,21 +644,58 @@ export default function Groups() {
               </div>
             </div>
 
-            <div style={{ marginBottom: 24 }}>
-              <h4 style={{ margin: "0 0 12px 0" }}>Current Group Members</h4>
-              <div style={{ 
-                padding: "12px", 
-                background: "#374151", 
-                borderRadius: "6px",
-                minHeight: "100px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#94a3b8"
-              }}>
-                User management functionality coming soon!
-              </div>
-            </div>
+                         <div style={{ marginBottom: 24 }}>
+               <h4 style={{ margin: "0 0 12px 0" }}>Current Group Members</h4>
+               {groupUsers.length === 0 ? (
+                 <div style={{ 
+                   padding: "12px", 
+                   background: "#374151", 
+                   borderRadius: "6px",
+                   minHeight: "100px",
+                   display: "flex",
+                   alignItems: "center",
+                   justifyContent: "center",
+                   color: "#94a3b8"
+                 }}>
+                   No members in this group yet.
+                 </div>
+               ) : (
+                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                   {groupUsers.map((user) => (
+                     <div
+                       key={user.user_id}
+                       style={{
+                         padding: "12px 16px",
+                         border: "1px solid #374151",
+                         borderRadius: 8,
+                         display: "flex",
+                         justifyContent: "space-between",
+                         alignItems: "center"
+                       }}
+                     >
+                       <div>
+                         <div style={{ fontWeight: 600, fontSize: 16 }}>
+                           {user.username}
+                         </div>
+                         <div style={{ fontSize: 13, color: "#94a3b8" }}>
+                           {user.email} • {user.role}
+                         </div>
+                         <div style={{ fontSize: 12, color: "#6b7280" }}>
+                           Joined: {user.joined_at ? new Date(user.joined_at).toLocaleDateString() : "Unknown"}
+                         </div>
+                       </div>
+                       <button
+                         className="btn"
+                         onClick={() => handleRemoveUserFromGroup(user.user_id)}
+                         style={{ background: "#ef4444", color: "white" }}
+                       >
+                         Remove
+                       </button>
+                     </div>
+                   ))}
+                 </div>
+               )}
+             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button

@@ -2,9 +2,11 @@ import { useState } from "react";
 import "../assets/style.css";
 import { uploadFile, askQuestion } from "../api/api.js";
 import Chat from "../components/Chat";
+import UserMenu from "../components/UserMenu.jsx";
 import Groups from "../components/Groups.jsx";
 import Chunks from "../components/Chunks";
 import { useAuth } from "../context/AuthContext.jsx";
+import AdminUsers from "./AdminUsers.jsx";
 
 export default function TabsApp() {
   const { user } = useAuth(); // get logged-in user
@@ -52,7 +54,7 @@ export default function TabsApp() {
   }
 
   const visibleTabs = {
-    admin: ["chat", "groups", "chunks"],
+    admin: ["chat", "groups", "chunks", "admin"],
     developer: ["groups", "chunks"],
     employee: ["chat", "groups"],
     client: ["chat", "groups"]
@@ -67,13 +69,16 @@ export default function TabsApp() {
     <h1>PreSales Insight Bot</h1>
     <div className="sub">AI assistant for exploring and managing presales presentation content.</div>
   </div>
-  <button
-    className="btn"
-    onClick={() => window.location.href = "/logout"}
-    style={{ background: "#f87171", color: "#fff", borderRadius: 6, padding: "6px 12px" }}
-  >
-    Logout
-  </button>
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <UserMenu />
+    <button
+      className="btn"
+      onClick={() => window.location.href = "/logout"}
+      style={{ background: "#f87171", color: "#fff", borderRadius: 6, padding: "6px 12px" }}
+    >
+      Logout
+    </button>
+  </div>
 </div>
 
 
@@ -87,6 +92,9 @@ export default function TabsApp() {
         )}
         {tabsToShow.includes("chunks") && (
           <button className="btn" onClick={() => setActiveTab("chunks")} style={{ opacity: activeTab === "chunks" ? 1 : 0.7 }}>Chunks</button>
+        )}
+        {tabsToShow.includes("admin") && (
+          <button className="btn" onClick={() => setActiveTab("admin")} style={{ opacity: activeTab === "admin" ? 1 : 0.7 }}>Admin</button>
         )}
       </div>
 
@@ -130,6 +138,12 @@ export default function TabsApp() {
       {activeTab === "chunks" && tabsToShow.includes("chunks") && (
         <div className="panel">
           <Chunks />
+        </div>
+      )}
+
+      {activeTab === "admin" && tabsToShow.includes("admin") && (
+        <div className="panel">
+          <AdminUsers />
         </div>
       )}
     </div>

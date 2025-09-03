@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import LoginPage from "./pages/LoginPage.jsx";
 import TabsApp from "./pages/TabsApp.jsx";
 import ChunksView from "./pages/ChunksView.jsx";
+import FileViewer from "./pages/FileViewer.jsx";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import LogoutPage from "./context/LogoutPage.jsx";
 // ProtectedRoute wrapper
@@ -35,6 +36,16 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ChunksView />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected File Viewer */}
+          <Route
+            path="/files/:fileId"
+            element={
+              <ProtectedRoute>
+                <FileViewer />
               </ProtectedRoute>
             }
           />

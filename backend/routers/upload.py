@@ -3,7 +3,7 @@ import os
 import json
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, UploadFile, Header
 from backend.config import SESSIONS, SESSIONS_DIR
 from backend.database import ensure_session, register_file
 from backend.logic.faiss_index import build_faiss_index
@@ -12,7 +12,7 @@ from backend.logic.universal_extractor import universal_extractor
 router = APIRouter()
 
 @router.post("/upload-file")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), x_user_id: int | None = Header(default=None, alias="X-User-Id")):
     # 1️⃣ Generate a new session ID
     session_id = str(uuid.uuid4())
     print(f"🆕 Creating session: {session_id}")
@@ -63,8 +63,7 @@ async def upload_file(file: UploadFile = File(...)):
 
     # 8️⃣ Try DB registration, but don't fail session creation if DB fails
     try:
-        # TODO: Get user_id from authentication context
-        user_id = 1  # Placeholder - should come from auth
+        user_id = x_user_id or 1
         ensure_session(session_id, user_id)
         register_file(session_id, file.filename, user_id, file_path, session_path, slides_data)
         print(f"✅ Registered file in DB")
