@@ -3,6 +3,9 @@ import os
 import json
 from fastapi import APIRouter, HTTPException, Query
 from backend.config import SESSIONS_DIR
+from backend.database import SessionLocal, Session as DBSession, File as DBFile, User
+import os
+import shutil
 
 router = APIRouter()
 
@@ -116,3 +119,73 @@ def get_chunks(session_id: str = Query(...)):
     chunks = [{"content": t} for t in texts]
 
     return {"session_id": session_id, "chunks": chunks}
+
+
+# -----------------------------
+# List my sessions with summary
+# -----------------------------
+@router.get("/api/my-sessions")
+def my_sessions(x_user_id: int | None = Query(default=None)):
+    db = SessionLocal()
+    sessions = []
+    try:
+        q = db.query(DBSession)
+        if x_user_id:
+            q = q.filter(DBSession.created_by == x_user_id)
+        for s in q.all():
+            files = db.query(DBFile).filter(DBFile.id.like(f"{s.id}_%")).all()
+            last_file = None
+            if files:
+                last_file = max(files, key=lambda f: f.uploaded_at or 0)
+            uploader = None
+            if s.created_by:
+                u = db.query(User).filter(User.user_id == s.created_by).first()
+                if u:
+                    uploader = {"user_id": u.user_id, "username": u.username, "role": u.role}
+            sessions.append({
+                "session_id": s.id,
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+                "created_by": s.created_by,
+                "uploader": uploader,
+                "last_file": {
+                    "id": last_file.id if last_file else None,
+                    "original_filename": last_file.original_filename if last_file else None,
+                    "uploaded_at": last_file.uploaded_at.isoformat() if (last_file and last_file.uploaded_at) else None,
+                }
+            })
+    finally:
+        db.close()
+    return {"sessions": sessions}
+
+
+# -----------------------------
+# Delete a session
+# -----------------------------
+@router.delete("/api/sessions/{session_id}")
+def delete_session(session_id: str, x_user_id: int | None = Query(default=None)):
+    db = SessionLocal()
+    try:
+        # Check if session exists and user has permission
+        session = db.query(DBSession).filter(DBSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Check if user owns the session (if user_id provided)
+        if x_user_id and session.created_by != x_user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to delete this session")
+        
+        # Delete session directory
+        session_dir = os.path.join(SESSIONS_DIR, session_id)
+        if os.path.exists(session_dir):
+            shutil.rmtree(session_dir)
+        
+        # Delete from database
+        db.delete(session)
+        db.commit()
+        
+        return {"message": "Session deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()

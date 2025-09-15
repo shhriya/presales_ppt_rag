@@ -16,3 +16,7 @@ pymysql
 python-pptx
 PyMuPDF
 python-docx
+cryptography
+# google-generativeai (removed; switched to OpenAI)
+comtypes; platform_system == "Windows"
+pywin32; platform_system == "Windows"

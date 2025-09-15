@@ -1,5 +1,7 @@
 # routers/files.py
 import os
+import sys
+import shutil
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from backend.config import SESSIONS_DIR
@@ -17,27 +19,40 @@ IGNORE_FILES = {"chunks.json", "slides.json", "Thumbs.db", ".DS_Store"}
 
 
 def list_session_files(sessions_dir):
-    """Return only user-uploaded files inside sessions (ignore slides/chunks)."""
+    import json
     files = []
     for sid in os.listdir(sessions_dir):
         session_path = os.path.join(sessions_dir, sid)
         if not os.path.isdir(session_path):
             continue
+        
+        # Load metadata
+        meta_path = os.path.join(session_path, "meta.json")
+        meta = {}
+        if os.path.exists(meta_path):
+            with open(meta_path, "r") as mf:
+                for m in json.load(mf):
+                    meta[m["filename"]] = m
+        
         for fname in os.listdir(session_path):
             fpath = os.path.join(session_path, fname)
-            if not os.path.isfile(fpath):
+            if not os.path.isfile(fpath) or fname in IGNORE_FILES or os.path.splitext(fname)[1].lower() in IGNORE_EXTS:
                 continue
-            if fname in IGNORE_FILES or os.path.splitext(fname)[1].lower() in IGNORE_EXTS:
-                continue
+            
+            uploader_info = meta.get(fname, {}).get("uploaded_by", {})
+            uploaded_at = meta.get(fname, {}).get("uploaded_at", datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat())
+            
             files.append({
                 "id": f"{sid}_{fname}",
                 "session_id": sid,
                 "original_filename": fname,
                 "preview_url": f"/files/sessions/{sid}/{fname}/preview",
                 "download_url": f"/files/sessions/{sid}/{fname}/download",
-                "uploaded_at": datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat()
+                "uploaded_at": uploaded_at,
+                "uploaded_by": uploader_info
             })
     return files
+
 
 
 @router.get("/api/files")
@@ -125,17 +140,18 @@ def _resolve_file_path_from_id(file_id: str) -> str:
     return file_path
 
 @router.get("/files/{file_id}/as-pdf")
-def get_pptx_as_pdf(file_id: str):
-    """Convert PPTX/PPT to PDF for inline viewing.
+def get_office_as_pdf(file_id: str):
+    """Convert Office docs (PPTX/PPT/DOCX/DOC) to PDF for inline viewing.
 
     Strategy:
-    1) Try LibreOffice (full-fidelity) if 'soffice' is available.
-    2) Fallback to simple text-only conversion using python-pptx + PyMuPDF.
+    1) On Windows, try Office COM (PowerPoint/Word) if available.
+    2) Try LibreOffice (soffice) headless conversion.
+    3) For PPTX/PPT only, fallback to simple text-only PDF.
     """
     try:
         src_path = _resolve_file_path_from_id(file_id)
         ext = os.path.splitext(src_path)[1].lower()
-        if ext not in [".pptx", ".ppt"]:
+        if ext not in [".pptx", ".ppt", ".docx", ".doc"]:
             # If already PDF, just return the original
             if ext == ".pdf":
                 return FileResponse(src_path, media_type="application/pdf")
@@ -145,50 +161,221 @@ def get_pptx_as_pdf(file_id: str):
                 media_type = "application/octet-stream"
             return FileResponse(src_path, media_type=media_type)
 
-        # Preferred: LibreOffice conversion for high fidelity
+        # Preferred cache path
         out_pdf = src_path + ".preview.pdf"
         if not os.path.exists(out_pdf):
-            try:
-                # Convert into the same directory as src
-                # soffice --headless --convert-to pdf --outdir <dir> <file>
-                subprocess.run([
-                    "soffice", "--headless", "--convert-to", "pdf", "--outdir", os.path.dirname(src_path), src_path
-                ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                # LibreOffice names output with same basename but .pdf
-                candidate = os.path.splitext(src_path)[0] + ".pdf"
-                if os.path.exists(candidate):
-                    # rename to preview path for caching
-                    os.replace(candidate, out_pdf)
-            except Exception:
-                # Fallback: simple text-only conversion
-                prs = Presentation(src_path)
-                doc = fitz.open()
-                for slide in prs.slides:
-                    page = doc.new_page()
-                    y = 72
-                    for shape in slide.shapes:
+            converted = False
+
+            # 1) On Windows, try Office COM via pywin32 (most reliable)
+            if sys.platform.startswith("win") and not converted:
+                try:
+                    import win32com.client  # type: ignore
+                    ext_lower = ext
+                    pdf_temp = out_pdf
+                    if ext_lower in [".pptx", ".ppt"]:
+                        from win32com.client import constants  # type: ignore
+                        powerpoint = win32com.client.Dispatch("PowerPoint.Application")
+                        powerpoint.Visible = 1
                         try:
-                            text = ""
-                            if getattr(shape, "has_text_frame", False):
-                                text = shape.text
-                            elif getattr(shape, "has_table", False):
-                                rows = []
-                                for row in shape.table.rows:
-                                    rows.append(" \t ".join([cell.text for cell in row.cells]))
-                                text = "\n".join(rows)
-                            if text:
-                                page.insert_text((72, y), text, fontsize=12)
-                                y += 18 * (text.count("\n") + 1)
-                                if y > page.rect.height - 72:
-                                    page = doc.new_page()
-                                    y = 72
-                        except Exception:
-                            continue
-                doc.save(out_pdf)
-                doc.close()
+                            presentation = powerpoint.Presentations.Open(src_path, WithWindow=False)
+                            try:
+                                presentation.SaveAs(pdf_temp, constants.ppSaveAsPDF)
+                            finally:
+                                presentation.Close()
+                        finally:
+                            powerpoint.Quit()
+                        if os.path.exists(pdf_temp):
+                            converted = True
+                    elif ext_lower in [".docx", ".doc"]:
+                        word = win32com.client.Dispatch("Word.Application")
+                        word.Visible = 0
+                        try:
+                            doc = word.Documents.Open(src_path)
+                            try:
+                                wdFormatPDF = 17
+                                doc.SaveAs(pdf_temp, FileFormat=wdFormatPDF)
+                            finally:
+                                doc.Close(False)
+                        finally:
+                            word.Quit()
+                        if os.path.exists(pdf_temp):
+                            converted = True
+                except Exception:
+                    converted = False
+
+            # 1b) If pywin32 not available, try comtypes as secondary on Windows
+            if sys.platform.startswith("win") and not converted:
+                try:
+                    import comtypes.client  # type: ignore
+                    pp_save_as_pdf = 32
+                    pdf_temp = out_pdf
+                    powerpoint = comtypes.client.CreateObject("PowerPoint.Application")
+                    powerpoint.Visible = 1
+                    try:
+                        presentation = powerpoint.Presentations.Open(src_path, WithWindow=False)
+                        try:
+                            presentation.SaveAs(pdf_temp, pp_save_as_pdf)
+                        finally:
+                            presentation.Close()
+                    finally:
+                        powerpoint.Quit()
+                    if os.path.exists(pdf_temp):
+                        converted = True
+                except Exception:
+                    converted = False
+
+            # 2) Try LibreOffice if available (cross-platform)
+            if not converted:
+                try:
+                    # Resolve soffice executable from env or PATH, accepting a directory path too
+                    soffice_env = os.environ.get("LIBREOFFICE_PATH")
+                    soffice_candidates = []
+                    if soffice_env:
+                        # If a directory was supplied, append common executable names
+                        if os.path.isdir(soffice_env):
+                            soffice_candidates.extend([
+                                os.path.join(soffice_env, "soffice"),
+                                os.path.join(soffice_env, "soffice.exe"),
+                                os.path.join(soffice_env, "program", "soffice"),
+                                os.path.join(soffice_env, "program", "soffice.exe"),
+                            ])
+                        else:
+                            soffice_candidates.append(soffice_env)
+                    # Also try PATH
+                    which_soffice = shutil.which("soffice")
+                    if which_soffice:
+                        soffice_candidates.append(which_soffice)
+                    # Common Windows install location
+                    if sys.platform.startswith("win"):
+                        soffice_candidates.extend([
+                            r"C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+                            r"C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
+                        ])
+
+                    soffice_exec = next((p for p in soffice_candidates if p and os.path.exists(p)), None)
+                    if not soffice_exec:
+                        raise RuntimeError("LibreOffice (soffice) not found. Set LIBREOFFICE_PATH to the install folder or soffice.exe.")
+
+                    # Use component export filters; fallback to generic pdf if filter not needed
+                    # --norestore/--nolockcheck avoid dialogs; --headless makes it non-interactive
+                    proc = subprocess.run([
+                        soffice_exec,
+                        "--headless",
+                        "--norestore",
+                        "--nolockcheck",
+                        "--convert-to", "pdf",
+                        "--outdir", os.path.dirname(src_path),
+                        src_path,
+                    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+                    if proc.returncode != 0:
+                        raise RuntimeError(f"LibreOffice failed: {proc.stderr or proc.stdout}")
+
+                    # LibreOffice writes <basename>.pdf in the outdir
+                    candidate = os.path.splitext(src_path)[0] + ".pdf"
+                    if not os.path.exists(candidate):
+                        # Some versions may output with uppercase/lowercase variations
+                        alt = os.path.splitext(os.path.basename(src_path))[0] + ".pdf"
+                        alt_path = os.path.join(os.path.dirname(src_path), alt)
+                        if os.path.exists(alt_path):
+                            candidate = alt_path
+
+                    if os.path.exists(candidate):
+                        os.replace(candidate, out_pdf)
+                        converted = True
+                    else:
+                        raise RuntimeError("LibreOffice did not produce a PDF output file")
+                except Exception as e:
+                    # Leave a breadcrumb in stderr to help diagnose
+                    print(f"[as-pdf] LibreOffice conversion error: {e}")
+                    converted = False
+
+            # 3) Fallback: simple text-only conversion (last resort, PPT only)
+            if not converted and ext in [".pptx", ".ppt"]:
+                try:
+                    prs = Presentation(src_path)
+                    doc = fitz.open()
+                    for slide in prs.slides:
+                        page = doc.new_page()
+                        y = 72
+                        for shape in slide.shapes:
+                            try:
+                                text = ""
+                                if getattr(shape, "has_text_frame", False):
+                                    text = shape.text
+                                elif getattr(shape, "has_table", False):
+                                    rows = []
+                                    for row in shape.table.rows:
+                                        rows.append(" \t ".join([cell.text for cell in row.cells]))
+                                    text = "\n".join(rows)
+                                if text:
+                                    page.insert_text((72, y), text, fontsize=12)
+                                    y += 18 * (text.count("\n") + 1)
+                                    if y > page.rect.height - 72:
+                                        page = doc.new_page()
+                                        y = 72
+                            except Exception:
+                                continue
+                    doc.save(out_pdf)
+                    doc.close()
+                    converted = True
+                except Exception:
+                    converted = False
+
+            if not converted:
+                raise HTTPException(status_code=500, detail="Unable to convert PPT to PDF on this server")
 
         return FileResponse(out_pdf, media_type="application/pdf")
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Conversion failed: {e}")
+
+# routers/files.py
+from fastapi import UploadFile, Depends, Request
+
+# Example of getting user info from headers (authHeaders from frontend)
+def get_user_from_headers(request: Request):
+    user_id = request.headers.get("X-User-Id")
+    role = request.headers.get("X-User-Role")
+    username = request.headers.get("X-User-Name")  # optional, send from frontend
+    email = request.headers.get("X-User-Email")
+    return {
+        "user_id": user_id,
+        "role": role,
+        "username": username,
+        "email": email
+    }
+
+@router.post("/upload-file")
+async def upload_file(file: UploadFile, request: Request):
+    user = get_user_from_headers(request)
+    
+    session_id = generate_session_id()  # however you create session folders
+    session_path = os.path.join(SESSIONS_DIR, session_id)
+    os.makedirs(session_path, exist_ok=True)
+    
+    file_path = os.path.join(session_path, file.filename)
+    
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    # Save metadata (including uploader info)
+    meta_path = os.path.join(session_path, "meta.json")
+    metadata = []
+    if os.path.exists(meta_path):
+        import json
+        with open(meta_path, "r") as mf:
+            metadata = json.load(mf)
+    
+    metadata.append({
+        "filename": file.filename,
+        "uploaded_at": datetime.now().isoformat(),
+        "uploaded_by": user
+    })
+
+    with open(meta_path, "w") as mf:
+        import json
+        json.dump(metadata, mf)
+
+    return {"detail": "File uploaded", "file_id": f"{session_id}_{file.filename}"}

@@ -35,14 +35,14 @@ export default function ChunksView() {
               background: "#1e293b",
               borderRadius: 8,
               padding: 20,
-              color: "#fff",
+              color: "#ffffff",
               boxShadow: "0 2px 8px #0002",
             }}
           >
             <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 8 }}>
               Chunk {chunk.chunk_number || idx + 1} {chunk.type ? `- ${chunk.type}` : ""}
             </div>
-            <div style={{ fontSize: 15, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
+            <div style={{ fontSize: 15, color: "#e5e7eb", whiteSpace: "pre-wrap" }}>
               {typeof chunk.content === "object"
                 ? JSON.stringify(chunk.content, null, 2)
                 : chunk.content}

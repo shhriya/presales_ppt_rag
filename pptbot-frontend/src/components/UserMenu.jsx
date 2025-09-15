@@ -14,7 +14,7 @@ export default function UserMenu() {
       const headers = { "Content-Type": "application/json" };
       if (user?.user_id) headers["X-User-Id"] = String(user.user_id);
       if (user?.role) headers["X-User-Role"] = String(user.role);
-      const res = await fetch(`http://localhost:8000/api/users/${user.user_id}/password`, {
+      const res = await fetch(`http://localhost:9000/api/users/${user.user_id}/password`, {
         method: "PUT",
         headers,
         body: JSON.stringify({ password: newPwd })
@@ -32,11 +32,11 @@ export default function UserMenu() {
       </button>
       {open && (
         <div style={{ position: "absolute", right: 0, top: "110%", background: "#1f2937", border: "1px solid #374151", borderRadius: 8, padding: 12, minWidth: 260, zIndex: 1000 }}>
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>{user?.username || "User"}</div>
+          <div style={{ fontWeight: 600, marginBottom: 8 , color: "white"}}>{user?.username || "User"}</div>
           <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 8 }}>{user?.email}</div>
           <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 12 }}>Role: {user?.role}</div>
 
-          <div style={{ marginBottom: 8, fontWeight: 600 }}>Change Password</div>
+          <div style={{ marginBottom: 8, fontWeight: 600 , color: "white"}}>Change Password</div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input type={showPwd ? "text" : "password"} value={newPwd} onChange={(e)=>setNewPwd(e.target.value)} placeholder="New password" />
             <button className="btn" onClick={() => setShowPwd(p=>!p)} style={{ background: "#374151", color: "white" }}>{showPwd ? "Hide" : "Show"}</button>

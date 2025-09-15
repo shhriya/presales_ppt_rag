@@ -21,6 +21,18 @@ export default function Groups() {
   const [showManageUsers, setShowManageUsers] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [groupUsers, setGroupUsers] = useState([]);
+  const [missingUserEmail, setMissingUserEmail] = useState("");
+  const [isSmall, setIsSmall] = useState(false);
+  // Button interaction helpers for hover/active visuals without changing logic
+  const baseBtnStyle = { background: "#e5e7eb", color: "#111827" };
+  function interactiveButtonProps(hoverBg, activeBg, hoverColor = "#ffffff") {
+    return {
+      onMouseEnter: (e) => { e.currentTarget.style.background = hoverBg; e.currentTarget.style.color = hoverColor; },
+      onMouseLeave: (e) => { e.currentTarget.style.background = baseBtnStyle.background; e.currentTarget.style.color = baseBtnStyle.color; },
+      onMouseDown: (e) => { e.currentTarget.style.background = activeBg; },
+      onMouseUp:   (e) => { e.currentTarget.style.background = hoverBg; },
+    };
+  }
 
   async function loadGroups() {
     try {
@@ -226,11 +238,18 @@ export default function Groups() {
     
     try {
       setError("");
+      setMissingUserEmail("");
       await addUserToGroupByEmail(selectedGroup.group_id, newUserEmail);
       setNewUserEmail("");
       await loadGroupUsers(selectedGroup.group_id);
     } catch (e) {
-      setError(e.message || "Failed to add user to group");
+      const msg = (e?.message || "").toLowerCase();
+      if (msg.includes("user does not exist")) {
+        setMissingUserEmail(newUserEmail);
+        setError("User does not exist. Please create the user in Admin first.");
+      } else {
+        setError(e.message || "Failed to add user to group");
+      }
     }
   }
 
@@ -260,19 +279,32 @@ export default function Groups() {
     }
   }, [selectedGroup]);
 
+  // Responsive: stack columns on smaller widths
+  useEffect(() => {
+    function handleResize() {
+      try {
+        setIsSmall(window.innerWidth < 900);
+      } catch {}
+    }
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
 
 
   return (
-    <div style={{ display: "flex", gap: 20, height: "100%" }}>
+    <div style={{ display: "flex", gap: 20, height: "100%", flexDirection: isSmall ? "column" : "row" }}>
       {/* Groups List */}
-      <div style={{ flex: 1, minWidth: 300 }}>
+      <div style={{ flex: 1, minWidth: isSmall ? "auto" : 300, display: isSmall && selectedGroup ? "none" : "block" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h2 style={{ margin: 0 }}>My Groups</h2>
           {isAdmin && (
             <button 
               className="btn" 
               onClick={() => setShowCreateGroup(true)}
-              style={{ background: "#3b82f6", color: "white" }}
+              style={baseBtnStyle}
+              {...interactiveButtonProps("#3b82f6", "#1e40af")}
             >
               Create Group
             </button>
@@ -295,23 +327,24 @@ export default function Groups() {
                 onClick={() => setSelectedGroup(group)}
                 style={{
                   padding: "12px 16px",
-                  border: "1px solid #374151",
+                  border: "1px solid rgb(101, 112, 128)",
                   borderRadius: 8,
                   cursor: "pointer",
                   background: selectedGroup?.group_id === group.group_id ? "#374151" : "transparent",
-                  transition: "background 0.2s"
+                  transition: "background 0.2s",
+                  color: "white" 
                 }}
               >
                 <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>
                   {group.name}
                 </div>
                 {group.description && (
-                  <div style={{ fontSize: 14, color: "#94a3b8" }}>
+                  <div style={{ fontSize: 14, color: "white" }}>
                     {group.description}
                   </div>
                 )}
                 <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                  Joined: {new Date(group.joined_at || Date.now()).toLocaleDateString()}
+                  Created: {new Date(group.joined_at || Date.now()).toLocaleDateString()}
                 </div>
               </div>
             ))}
@@ -320,37 +353,42 @@ export default function Groups() {
       </div>
 
       {/* Group Files */}
-      <div style={{ flex: 2 }}>
+      <div style={{ flex: isSmall ? 1 : 2 }}>
         {selectedGroup ? (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h2 style={{ margin: 0 }}>{selectedGroup.name} - Files</h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {isSmall && (
+                  <button className="btn" onClick={() => setSelectedGroup(null)} style={baseBtnStyle} {...interactiveButtonProps("#334155", "#1f2937")}>← Back</button>
+                )}
+                <h2 style={{ margin: 0 }}>{selectedGroup.name} - Files</h2>
+              </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn" onClick={() => setShowUploadFile(true)} style={{ background: "#10b981", color: "white" }}>
+                <button className="btn" onClick={() => setShowUploadFile(true)} style={baseBtnStyle} {...interactiveButtonProps("#10b981", "#065f46")}>
                   Upload File
                 </button>
                 {isAdmin && (
                   <>
-                    <button className="btn" onClick={() => setShowManageUsers(true)} style={{ background: "#8b5cf6", color: "white" }}>
+                    <button className="btn" onClick={() => setShowManageUsers(true)} style={baseBtnStyle} {...interactiveButtonProps("rgb(107, 106, 106)", "rgb(155, 155, 155)")}>
                       Manage Users
                     </button>
-                    <button className="btn" onClick={async () => { if (window.confirm(`Delete group \"${selectedGroup.name}\"? This cannot be undone.`)) { try { await deleteGroup(selectedGroup.group_id); await loadGroups(); setSelectedGroup(null); } catch (e) { setError(e.message); } } }} style={{ background: "#ef4444", color: "white" }}>
+                    <button className="btn" onClick={async () => { if (window.confirm(`Delete group \"${selectedGroup.name}\"? This cannot be undone.`)) { try { await deleteGroup(selectedGroup.group_id); await loadGroups(); setSelectedGroup(null); } catch (e) { setError(e.message); } } }} style={baseBtnStyle} {...interactiveButtonProps("#ef4444", "#b91c1c")}>
                       Delete Group
                     </button>
                   </>
                 )}
-                <button className="btn" onClick={() => loadGroupFiles(selectedGroup.group_id)}>
+                <button className="btn" onClick={() => loadGroupFiles(selectedGroup.group_id)} style={baseBtnStyle} {...interactiveButtonProps("#334155", "#1f2937")}>
                   Refresh
                 </button>
               </div>
             </div>
 
             {groupFiles.length === 0 ? (
-              <div style={{ textAlign: "center", color: "#94a3b8", marginTop: 32 }}>
+              <div style={{ textAlign: "center", color: "white", marginTop: 32 }}>
                 No files in this group yet.
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: isSmall ? "grid" : "flex", gridTemplateColumns: isSmall ? "repeat(auto-fit, minmax(260px, 1fr))" : undefined, flexDirection: isSmall ? undefined : "column", gap: 8 }}>
                 {groupFiles.map((file) => (
                   <div
                     key={file.id}
@@ -359,13 +397,14 @@ export default function Groups() {
                       border: "1px solid #374151",
                       borderRadius: 8,
                       display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center"
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 12
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <div style={{ fontSize: "24px" }}>{getFileIcon(file.original_filename)}</div>
-                      <div>
+                      <div style={{ color: "white" }}>
                         <div style={{ fontWeight: 600, fontSize: 16 }}>
                           {file.original_filename}
                         </div>
@@ -374,25 +413,28 @@ export default function Groups() {
                         </div>
                       </div>
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                       <button
                         className="btn"
                         onClick={() => navigate(`/files/${file.id}`)}
-                        style={{ background: "#3b82f6", color: "white" }}
+                        style={baseBtnStyle}
+                        {...interactiveButtonProps("#3b82f6", "#1e40af")}
                       >
                         View
                       </button>
                       <button
                         className="btn"
                         onClick={() => handleDownloadFile(file.id, file.original_filename)}
-                        style={{ background: "#10b981", color: "white" }}
+                        style={baseBtnStyle}
+                        {...interactiveButtonProps("#10b981", "#065f46")}
                       >
                         Download
                       </button>
                       <button
                         className="btn"
                         onClick={() => handleRemoveFileFromGroup(file.id, selectedGroup.group_id)}
-                        style={{ background: "#ef4444", color: "white" }}
+                        style={baseBtnStyle}
+                        {...interactiveButtonProps("#ef4444", "#b91c1c")}
                       >
                         Remove
                       </button>
@@ -405,7 +447,7 @@ export default function Groups() {
 
           </div>
         ) : (
-          <div style={{ textAlign: "center", color: "#94a3b8", marginTop: 32 }}>
+          <div style={{ textAlign: "center", color: "white", marginTop: 32 }}>
             Select a group to view its files
           </div>
         )}
@@ -438,10 +480,10 @@ export default function Groups() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ margin: "0 0 16px 0" }}>Create New Group</h3>
+            <h3 style={{ margin: "0 0 16px 0" , color: "white"}}>Create New Group</h3>
             
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 , color: "white"}}>
                 Group Name *
               </label>
               <input
@@ -461,7 +503,7 @@ export default function Groups() {
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 , color: "white"}}>
                 Description
               </label>
               <textarea
@@ -608,24 +650,27 @@ export default function Groups() {
               background: "#1f2937",
               padding: "24px",
               borderRadius: "12px",
-              minWidth: "500px",
-              border: "1px solid #374151"
+              width: "90%",
+              maxWidth: "720px",
+              border: "1px solid #374151",
+              maxHeight: "85vh",
+              overflowY: "auto"
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ margin: "0 0 16px 0" }}>Manage Users - {selectedGroup?.name}</h3>
+            <h3 style={{ margin: "0 0 16px 0", color: "white" }}>Manage Users - {selectedGroup?.name}</h3>
             
             <div style={{ marginBottom: 24 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 , color: "white" }}>
                 Add User by Email
               </label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input
                   type="email"
                   value={newUserEmail}
                   onChange={(e) => setNewUserEmail(e.target.value)}
                   style={{
-                    flex: 1,
+                    flex: "1 1 260px",
                     padding: "8px 12px",
                     borderRadius: "6px",
                     border: "1px solid #374151",
@@ -637,65 +682,111 @@ export default function Groups() {
                 <button
                   className="btn"
                   onClick={handleAddUserToGroup}
-                  style={{ background: "#10b981", color: "white" }}
+                  style={{ background: "#10b981", color: "white", flex: "1 1 140px" }}
                 >
                   Add User
                 </button>
               </div>
+              {missingUserEmail && (
+                <div style={{
+                  marginTop: 8,
+                  padding: "10px 12px",
+                  background: "#3f2a1d",
+                  border: "1px solid #b45309",
+                  color: "#fbbf24",
+                  borderRadius: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8
+                }}>
+                  <div>
+                    User "{missingUserEmail}" does not exist. Create the user in Admin, then try again.
+                  </div>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      try {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set("tab", "admin");
+                        window.history.replaceState({}, "", url);
+                      } catch {}
+                      // Simple tab switch in TabsApp
+                      // If TabsApp isn't in URL mode yet, fallback to navigate
+                      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+                      // Soft redirect by swapping hash (keeps SPA)
+                      try { window.location.hash = "#admin"; } catch {}
+                      // Hardest fallback: full reload to Admin tab
+                      setTimeout(() => {
+                        try {
+                          const u = new URL(window.location.href);
+                          u.searchParams.set("tab", "admin");
+                          window.location.href = u.toString();
+                        } catch {}
+                      }, 50);
+                    }}
+                    style={{ background: "#f59e0b", color: "#111827" }}
+                  >
+                    Go to Admin → Create User
+                  </button>
+                </div>
+              )}
             </div>
 
-                         <div style={{ marginBottom: 24 }}>
-               <h4 style={{ margin: "0 0 12px 0" }}>Current Group Members</h4>
-               {groupUsers.length === 0 ? (
-                 <div style={{ 
-                   padding: "12px", 
-                   background: "#374151", 
-                   borderRadius: "6px",
-                   minHeight: "100px",
-                   display: "flex",
-                   alignItems: "center",
-                   justifyContent: "center",
-                   color: "#94a3b8"
-                 }}>
-                   No members in this group yet.
-                 </div>
-               ) : (
-                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                   {groupUsers.map((user) => (
-                     <div
-                       key={user.user_id}
-                       style={{
-                         padding: "12px 16px",
-                         border: "1px solid #374151",
-                         borderRadius: 8,
-                         display: "flex",
-                         justifyContent: "space-between",
-                         alignItems: "center"
-                       }}
-                     >
-                       <div>
-                         <div style={{ fontWeight: 600, fontSize: 16 }}>
-                           {user.username}
-                         </div>
-                         <div style={{ fontSize: 13, color: "#94a3b8" }}>
-                           {user.email} • {user.role}
-                         </div>
-                         <div style={{ fontSize: 12, color: "#6b7280" }}>
-                           Joined: {user.joined_at ? new Date(user.joined_at).toLocaleDateString() : "Unknown"}
-                         </div>
-                       </div>
-                       <button
-                         className="btn"
-                         onClick={() => handleRemoveUserFromGroup(user.user_id)}
-                         style={{ background: "#ef4444", color: "white" }}
-                       >
-                         Remove
-                       </button>
-                     </div>
-                   ))}
-                 </div>
-               )}
-             </div>
+            <div style={{ marginBottom: 24 }}>
+              <h4 style={{ margin: "0 0 12px 0" , color: "white" }}>Current Group Members</h4>
+              {groupUsers.length === 0 ? (
+                <div style={{ 
+                  padding: "12px", 
+                  background: "#374151", 
+                  borderRadius: "6px",
+                  minHeight: "100px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#94a3b8"
+                }}>
+                  No members in this group yet.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "50vh", overflowY: "auto" }}>
+                  {groupUsers.map((user) => (
+                    <div
+                      key={user.user_id}
+                      style={{
+                        padding: "12px 16px",
+                        border: "1px solid #374151",
+                        borderRadius: 8,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 12,
+                        flexWrap: "wrap"
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+                        <div style={{ fontWeight: 600, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" , color: "white"}}>
+                          {user.username}
+                        </div>
+                        <div style={{ fontSize: 13, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {user.email} • {user.role}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#6b7280" }}>
+                          Joined: {user.joined_at ? new Date(user.joined_at).toLocaleDateString() : "Unknown"}
+                        </div>
+                      </div>
+                      <button
+                        className="btn"
+                        onClick={() => handleRemoveUserFromGroup(user.user_id)}
+                        style={{ background: "#ef4444", color: "white", flex: "0 0 auto" }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button

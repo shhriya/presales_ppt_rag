@@ -1,5 +1,6 @@
 // api.js
-export const BASE_URL = "http://localhost:8000";
+export const BASE_URL = "http://localhost:9000";
+
 
 function authHeaders() {
   try {
@@ -15,20 +16,44 @@ function authHeaders() {
   }
 }
 
+// Generic fetch with timeout
+async function fetchWithTimeout(resource, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  // const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(resource, { ...options, signal: controller.signal });
+    return response;
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error(`Network timeout after ${timeoutMs}ms contacting ${resource}`);
+    }
+    throw err;
+  } finally {
+    // clearTimeout(id);
+  }
+}
 
 // Upload any file (ppt, pdf, docx, etc.)
-export async function uploadFile(file) {
+export async function uploadFile(file, user, sessionId) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${BASE_URL}/upload-file`, {
+  const headers = {
+    "X-User-Id": user?.user_id || "",
+    "X-User-Role": user?.role || "",
+    "X-User-Name": user?.username || "",
+    "X-User-Email": user?.email || "",
+  };
+  if (sessionId) headers["X-Session-Id"] = sessionId;
+
+  const res = await fetch("/upload-file", {
     method: "POST",
     body: formData,
+    headers,
   });
-
-  if (!res.ok) throw new Error((await res.json()).detail || "Upload failed");
   return res.json();
 }
+
 
 // Ask question (still needs sessionId)
 export async function askQuestion(sessionId, question) {
@@ -44,20 +69,37 @@ export async function askQuestion(sessionId, question) {
 
 // ✅ List ALL stored files (no session filter by default)
 export async function listFiles() {
-  const res = await fetch(`${BASE_URL}/api/files`, { headers: { ...authHeaders() } });
+  const res = await fetch(`/api/files`, { headers: { ...authHeaders() } });
   if (!res.ok) throw new Error((await res.json()).detail || "List files failed");
+  return res.json();
+}
+
+export async function listMySessions(userId) {
+  const url = userId ? `/api/my-sessions?x_user_id=${encodeURIComponent(userId)}` : `/api/my-sessions`;
+  const res = await fetch(url, { headers: { ...authHeaders() } });
+  if (!res.ok) throw new Error((await res.json()).detail || "Failed to fetch sessions");
+  return res.json();
+}
+
+export async function deleteSession(sessionId, userId) {
+  const url = userId ? `/api/sessions/${sessionId}?x_user_id=${encodeURIComponent(userId)}` : `/api/sessions/${sessionId}`;
+  const res = await fetch(url, { 
+    method: "DELETE",
+    headers: { ...authHeaders() } 
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || "Failed to delete session");
   return res.json();
 }
 
 // Get slides for a file (if that file type supports slides)
 export async function getSlides(fileId) {
-  const res = await fetch(`${BASE_URL}/files/${fileId}/slides`, { headers: { ...authHeaders() } });
+  const res = await fetch(`/files/${fileId}/slides`, { headers: { ...authHeaders() } });
   if (!res.ok) throw new Error((await res.json()).detail || "Get slides failed");
   return res.json();
 }
 
 export async function listChunks(sessionId) {
-  let url = `${BASE_URL}/api/chunks`;
+  let url = `/api/chunks`;
   if (sessionId) url += `?session_id=${sessionId}`;
 
   const res = await fetch(url, { headers: { ...authHeaders() } });
@@ -67,34 +109,52 @@ export async function listChunks(sessionId) {
 
 
 export async function login(email, password) {
-  const res = await fetch(`${BASE_URL}/login`, {
+  const payload = { email, password };
+  const options = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+    body: JSON.stringify(payload),
+  };
 
-  if (!res.ok) {
-    throw new Error(`Login failed: ${res.status}`);
+  const tryEndpoint = async (path) => {
+    const res = await fetchWithTimeout(`${BASE_URL}${path}`, options, 15000);
+    if (res.ok) return res.json();
+    let details = "";
+    try { details = await res.text(); } catch {}
+    throw new Error(`Login failed: ${res.status}${details ? ` - ${details}` : ""}`);
+  };
+
+  try {
+    return await tryEndpoint(`/login`);
+  } catch (err) {
+    try {
+      return await tryEndpoint(`/api/login`);
+    } catch (aliasErr) {
+      const msg = aliasErr?.message || err?.message || "Unknown error";
+      if (msg.includes("TypeError") || msg.includes("Failed to fetch") || msg.includes("Network")) {
+        throw new Error(`Network error contacting backend at ${BASE_URL}. ${msg}`);
+      }
+      throw new Error(msg);
+    }
   }
-
-  return res.json();
 }
+
 
 // Group Management APIs
 export async function listGroups() {
-  const res = await fetch(`${BASE_URL}/api/groups`, { headers: { ...authHeaders() } });
+  const res = await fetch(`/api/groups`, { headers: { ...authHeaders() } });
   if (!res.ok) throw new Error((await res.json()).detail || "Failed to fetch groups");
   return res.json();
 }
 
 export async function getGroupFiles(groupId) {
-  const res = await fetch(`${BASE_URL}/api/groups/${groupId}/files`, { headers: { ...authHeaders() } });
+  const res = await fetch(`/api/groups/${groupId}/files`, { headers: { ...authHeaders() } });
   if (!res.ok) throw new Error((await res.json()).detail || "Failed to fetch group files");
   return res.json();
 }
 
 export async function createGroup(name, description = "") {
-  const res = await fetch(`${BASE_URL}/api/groups`, {
+  const res = await fetch(`/api/groups`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ name, description }),
@@ -104,7 +164,7 @@ export async function createGroup(name, description = "") {
 }
 
 export async function deleteGroup(groupId) {
-  const res = await fetch(`${BASE_URL}/api/groups/${groupId}`, {
+  const res = await fetch(`/api/groups/${groupId}`, {
     method: "DELETE",
     headers: { ...authHeaders() },
   });
@@ -113,7 +173,7 @@ export async function deleteGroup(groupId) {
 }
 
 export async function leaveGroup(groupId) {
-  const res = await fetch(`${BASE_URL}/api/groups/${groupId}/leave`, {
+  const res = await fetch(`/api/groups/${groupId}/leave`, {
     method: "DELETE",
     headers: { ...authHeaders() },
   });
@@ -122,7 +182,7 @@ export async function leaveGroup(groupId) {
 }
 
 export async function addFileToGroup(fileId, groupId) {
-  const res = await fetch(`${BASE_URL}/api/groups/${groupId}/files`, {
+  const res = await fetch(`/api/groups/${groupId}/files`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ file_id: fileId, group_id: groupId }),
@@ -132,7 +192,7 @@ export async function addFileToGroup(fileId, groupId) {
 }
 
 export async function removeFileFromGroup(fileId, groupId) {
-  const res = await fetch(`${BASE_URL}/api/groups/${groupId}/files/${fileId}`, {
+  const res = await fetch(`/api/groups/${groupId}/files/${fileId}`, {
     method: "DELETE",
     headers: { ...authHeaders() },
   });
@@ -141,14 +201,14 @@ export async function removeFileFromGroup(fileId, groupId) {
 }
 
 export async function getMyFiles() {
-  const res = await fetch(`${BASE_URL}/api/files/my`, { headers: { ...authHeaders() } });
+  const res = await fetch(`/api/files/my`, { headers: { ...authHeaders() } });
   if (!res.ok) throw new Error((await res.json()).detail || "Failed to fetch my files");
   return res.json();
 }
 
 // User Management APIs
 export async function getGroupUsers(groupId) {
-  const res = await fetch(`${BASE_URL}/api/groups/${groupId}/users`, { headers: { ...authHeaders() } });
+  const res = await fetch(`/api/groups/${groupId}/users`, { headers: { ...authHeaders() } });
   if (!res.ok) throw new Error((await res.json()).detail || "Failed to fetch group users");
   return res.json();
 }
@@ -157,7 +217,7 @@ export async function addUserToGroupByEmail(groupId, email) {
   const formData = new FormData();
   formData.append('user_email', email);
   
-  const res = await fetch(`${BASE_URL}/api/groups/${groupId}/users/by-email`, {
+  const res = await fetch(`/api/groups/${groupId}/users/by-email`, {
     method: "POST",
     headers: { ...authHeaders() },
     body: formData,
@@ -167,7 +227,7 @@ export async function addUserToGroupByEmail(groupId, email) {
 }
 
 export async function removeUserFromGroup(groupId, userId) {
-  const res = await fetch(`${BASE_URL}/api/groups/${groupId}/users/${userId}`, {
+  const res = await fetch(`/api/groups/${groupId}/users/${userId}`, {
     method: "DELETE",
     headers: { ...authHeaders() },
   });

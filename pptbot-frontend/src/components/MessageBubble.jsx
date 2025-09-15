@@ -1,26 +1,9 @@
 // MessageBubble.jsx
-import React, { useEffect, useState } from "react";
+import React from "react";
  
 export default function MessageBubble({ role, content }) {
   const isUser = role === "user";
-  const [displayedText, setDisplayedText] = useState("");
- 
-  useEffect(() => {
-  setDisplayedText("");
-  let i = 0;
 
-  const interval = setInterval(() => {
-    i++;
-    setDisplayedText(content.slice(0, i));
-    if (i >= content.length) {
-      clearInterval(interval);
-    }
-  }, 50);
-
-  return () => clearInterval(interval);
-}, [content]);
-
- 
   return (
     <div
       style={{
@@ -31,7 +14,7 @@ export default function MessageBubble({ role, content }) {
     >
       <div
         style={{
-          maxWidth: "75%",
+          maxWidth: "min(75%, 800px)",
           padding: "10px 14px",
           borderRadius: "14px",
           background: isUser ? "#2563eb" : "#111827",
@@ -40,7 +23,7 @@ export default function MessageBubble({ role, content }) {
           wordBreak: "break-word",
         }}
       >
-        {displayedText}
+        {content}
       </div>
     </div>
   );

@@ -60,8 +60,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 Run server:
-uvicorn main:app --reload
-Backend runs at 👉 http://localhost:8000
+uvicorn main:app --reload --port 9000
+Backend runs at 👉 http://localhost:9000
 
 🔹 Frontend (React)
 Go to frontend folder:

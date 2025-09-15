@@ -23,5 +23,18 @@ def universal_extractor(file_path, session_media_dir):
     elif ext in [".mp4", ".mov", ".avi", ".wmv", ".mkv"]:
         return video_extractor.extract_video(file_path)
 
+    elif ext == ".txt":
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read()
+            return [{"file_name": os.path.basename(file_path), "full_text": text}]
+        except Exception as _e:
+            return [{"file_name": os.path.basename(file_path), "full_text": ""}]
     else:
-        return [{"file_name": os.path.basename(file_path), "full_text": f"Unsupported file type: {ext}"}]
+        # Fallback: treat as generic binary/text; attempt text decode
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read()
+            return [{"file_name": os.path.basename(file_path), "full_text": text}]
+        except Exception:
+            return [{"file_name": os.path.basename(file_path), "full_text": f"Unsupported file type: {ext}"}]

@@ -41,3 +41,22 @@
 .read-the-docs {
   color: #888;
 }
+
+.user-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.user-list::-webkit-scrollbar-track {
+  background: #1e293b;
+  border-radius: 8px;
+}
+
+.user-list::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 8px;
+  transition: background 0.3s ease;
+}
+
+.user-list::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}

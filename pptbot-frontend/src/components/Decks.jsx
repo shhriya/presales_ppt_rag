@@ -35,14 +35,6 @@ const getFilePreviewUrl = (f) => {
   return `${BASE_URL}${f.preview_url}`;
 };
 
-// const getFilePreviewUrl = (f) => {
-//   if (isPPT(f)) {
-//     // ✅ Only need filename now, backend searches sessions automatically
-//     return `${BASE_URL}/convert-ppt-to-pdf/${f.original_filename}`;
-//   }
-//   return `${BASE_URL}${f.preview_url}`;
-// };
-
   return (
     <div>
       <div

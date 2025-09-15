@@ -9,17 +9,24 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setIsSubmitting(true);
     try {
+      console.log("[LoginPage] Submitting login for", email);
       const data = await apiLogin(email, password);
       login(data);
+      console.log("[LoginPage] Login success, navigating to /");
       navigate("/");
     } catch (err) {
       console.error("Login failed:", err);
-      setError("Invalid credentials. Please try again.");
+      const message = err?.message || "Invalid credentials. Please try again.";
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -53,6 +60,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="username"
             style={{
               padding: "12px",
               borderRadius: "8px",
@@ -68,6 +76,7 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="current-password"
             style={{
               padding: "12px",
               borderRadius: "8px",
@@ -79,20 +88,21 @@ export default function LoginPage() {
           />
           <button
             type="submit"
+            disabled={isSubmitting}
             style={{
               padding: "12px",
               borderRadius: "8px",
               border: "none",
-              background: "#3b82f6",
+              background: isSubmitting ? "#475569" : "#3b82f6",
               color: "#fff",
               fontWeight: 600,
-              cursor: "pointer",
+              cursor: isSubmitting ? "not-allowed" : "pointer",
               transition: "0.2s",
             }}
-            onMouseEnter={(e) => (e.target.style.background = "#2563eb")}
-            onMouseLeave={(e) => (e.target.style.background = "#3b82f6")}
+            onMouseEnter={(e) => !isSubmitting && (e.target.style.background = "#2563eb")}
+            onMouseLeave={(e) => !isSubmitting && (e.target.style.background = "#3b82f6")}
           >
-            Login
+            {isSubmitting ? "Logging in..." : "Login"}
           </button>
         </form>
 

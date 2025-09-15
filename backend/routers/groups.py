@@ -6,7 +6,7 @@ from backend.database import (
     get_user_groups, get_group_files, create_group, add_user_to_group,
     remove_user_from_group, get_all_groups, add_file_to_group,
     remove_file_from_group, get_user_files, get_group_users, get_user_id_by_email,
-    get_or_create_user_by_email, delete_group, leave_group
+    delete_group, leave_group
 )
 # Authentication helper - placeholder for now
 # In production, implement proper JWT token validation
@@ -135,15 +135,16 @@ def api_get_group_users(group_id: int, user = Depends(get_current_user)):
 
 @router.post("/api/groups/{group_id}/users/by-email")
 def api_add_user_to_group_by_email(group_id: int, user_email: str = Form(...), current_user = Depends(get_current_user)):
-    """Add a user to a group by email"""
+    """Add a user to a group by email. User must already exist (created by admin)."""
     # TODO: Add admin check here
     try:
-        # Find or create the user by email
         user_id = get_user_id_by_email(user_email)
         if not user_id:
-            user_id = get_or_create_user_by_email(user_email)
+            raise HTTPException(status_code=400, detail="User does not exist. Please ask admin to create the user first.")
         add_user_to_group(user_id, group_id)
         return {"message": "User added to group successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

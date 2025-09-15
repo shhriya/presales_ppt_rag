@@ -12,9 +12,16 @@ from backend.logic.universal_extractor import universal_extractor
 router = APIRouter()
 
 @router.post("/upload-file")
-async def upload_file(file: UploadFile = File(...), x_user_id: int | None = Header(default=None, alias="X-User-Id")):
-    # 1️⃣ Generate a new session ID
-    session_id = str(uuid.uuid4())
+async def upload_file(
+    file: UploadFile = File(...),
+    x_user_id: int | None = Header(default=None, alias="X-User-Id"),
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    x_user_name: str | None = Header(default=None, alias="X-User-Name"),
+    x_user_email: str | None = Header(default=None, alias="X-User-Email"),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+):
+    # 1️⃣ Generate or reuse a session ID
+    session_id = x_session_id or str(uuid.uuid4())
     print(f"🆕 Creating session: {session_id}")
 
     # 2️⃣ Create session folder safely
@@ -44,6 +51,33 @@ async def upload_file(file: UploadFile = File(...), x_user_id: int | None = Head
     with open(slides_json_path, "w", encoding="utf-8") as f:
         json.dump(slides_data, f, ensure_ascii=False, indent=2)
     print(f"💾 Saved slides.json at {slides_json_path}")
+
+    # 5b️⃣ Save meta.json with uploader info for listing
+    try:
+        meta_path = os.path.join(session_path, "meta.json")
+        existing = []
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as mf:
+                    existing = json.load(mf)
+            except Exception:
+                existing = []
+        entry = {
+            "filename": file.filename,
+            "uploaded_at": datetime.utcnow().isoformat(),
+            "uploaded_by": {
+                "user_id": x_user_id,
+                "username": x_user_name,
+                "email": x_user_email,
+                "role": x_user_role,
+            },
+        }
+        # replace if already present for same filename
+        existing = [e for e in existing if e.get("filename") != file.filename] + [entry]
+        with open(meta_path, "w", encoding="utf-8") as mf:
+            json.dump(existing, mf, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"⚠️ Warning: failed to write meta.json: {e}")
 
     # 6️⃣ Build FAISS index if text exists
     text_slides = [s for s in slides_data if s.get("full_text")]

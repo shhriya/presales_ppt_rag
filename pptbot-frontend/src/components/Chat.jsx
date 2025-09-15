@@ -1,15 +1,15 @@
-// chat.jsx
+// // chat.jsx
 import { useEffect, useRef, useState } from "react";
 import MessageBubble from "./MessageBubble";
 
-export default function Chat({ messages, disabled, onSend }) {
+export default function Chat({ messages, disabled, onSend, isAsking }) {
   const [input, setInput] = useState("");
   const listRef = useRef(null);
 
   useEffect(() => {
     listRef.current?.scrollTo({
       top: listRef.current.scrollHeight,
-      behavior: "smooth"
+      behavior: "smooth",
     });
   }, [messages]);
 
@@ -23,30 +23,103 @@ export default function Chat({ messages, disabled, onSend }) {
 
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();   // stop form from submitting early
+      e.preventDefault(); // stop form from submitting early
       handleSend();
     }
   }
 
   return (
-    <div className="chat-container">
-      <div className="chat-list" ref={listRef}>
+    <div
+      className="chat-container"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh", // full screen height
+        maxHeight: "100vh",
+      }}
+    >
+      {/* scrollable chat area */}
+      <div
+        className="chat-list"
+        ref={listRef}
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "12px",
+        }}
+      >
         {messages.map((m, i) => (
           <MessageBubble key={i} role={m.role} content={m.content} />
         ))}
+        {isAsking && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              color: "#94a3b8",
+              padding: "8px 4px",
+            }}
+          >
+            <span>Assistant is typing</span>
+            <span className="dots" style={{ display: "inline-flex", gap: 4 }}>
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 6,
+                  background: "#94a3b8",
+                  opacity: 0.6,
+                  animation: "blink 1.2s infinite 0s",
+                }}
+              />
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 6,
+                  background: "#94a3b8",
+                  opacity: 0.6,
+                  animation: "blink 1.2s infinite 0.2s",
+                }}
+              />
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 6,
+                  background: "#94a3b8",
+                  opacity: 0.6,
+                  animation: "blink 1.2s infinite 0.4s",
+                }}
+              />
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="chat-input">
+      {/* input fixed at bottom */}
+      <div
+        className="chat-input"
+        style={{
+          display: "flex",
+          gap: 8,
+          padding: "8px",
+          borderTop: "1px solid #e5e7eb",
+          background: "white",
+        }}
+      >
         <input
-  id="chat-input"
-  name="chatInput"
-  type="text"
-  value={input}
-  onChange={(e) => setInput(e.target.value)}
-  onKeyDown={handleKeyDown}
-  placeholder="Ask about your presentation..."
-  disabled={disabled}
-/>
+          id="chat-input"
+          name="chatInput"
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Ask about your presentation..."
+          disabled={disabled}
+          style={{ flex: 1, minWidth: 0 }}
+        />
 
         <button type="button" onClick={handleSend} disabled={disabled}>
           Send
@@ -55,45 +128,3 @@ export default function Chat({ messages, disabled, onSend }) {
     </div>
   );
 }
-
-
-// // chat.jsx
-// import { useEffect, useRef } from "react";
-// import MessageBubble from "./MessageBubble";
- 
-// export default function Chat({ messages, disabled, onSend }) {
-//   const inputRef = useRef(null);
-//   const listRef = useRef(null);
- 
-//   useEffect(() => {
-//     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-//   }, [messages]);
- 
-//   function handleSubmit(e) {
-//     e.preventDefault();
-//     const val = inputRef.current.value.trim();
-//     if (!val) return;
-//     console.log("Submitting value:", val);
-//     onSend(val);
-//     inputRef.current.value = "";
-//   }
- 
-//   return (
-//     <div className="chat-container">
-//       <div className="chat-list" ref={listRef}>
-//         {messages.map((m, i) => (
-//           <MessageBubble key={i} role={m.role} content={m.content} />
-//         ))}
-//       </div>
- 
-//       <form className="chat-input" onSubmit={handleSubmit}>
-//         <input
-//           ref={inputRef}
-//           placeholder="Ask about your presentation..."
-//           disabled={disabled}
-//         />
-//         <button type="submit" disabled={disabled}>Send</button>
-//       </form>
-//     </div>
-//   );
-// }
