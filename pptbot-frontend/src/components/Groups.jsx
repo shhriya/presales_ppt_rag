@@ -570,10 +570,10 @@ export default function Groups() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ margin: "0 0 16px 0" }}>Upload File to {selectedGroup?.name}</h3>
+            <h3 style={{ margin: "0 0 16px 0", color: "white" }}>Upload File to {selectedGroup?.name}</h3>
             
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 500, color: "white" }}>
                 Select File *
               </label>
               <input
