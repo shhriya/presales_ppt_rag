@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import "../assets/style.css";
-import { uploadFile, askQuestion, listMySessions, deleteSession } from "../api/api.js";
+import { uploadFile, askQuestion, listMySessions, deleteSession, getSessionChatHistory } from "../api/api.js";
 import Chat from "../components/Chat";
 import UserMenu from "../components/UserMenu.jsx";
 import Groups from "../components/Groups.jsx";
@@ -56,6 +56,30 @@ export default function TabsApp() {
       if (savedSessionMessages) setSessionMessages(JSON.parse(savedSessionMessages));
     } catch {}
   }, []);
+
+  // Load chat history from database when session changes
+  useEffect(() => {
+    if (sessionId && user?.user_id) {
+      // Load chat history from database
+      getSessionChatHistory(sessionId)
+        .then(historyRes => {
+          const dbMessages = historyRes.messages || [];
+          setMessages(dbMessages);
+          setSessionMessages(prev => ({ ...prev, [sessionId]: dbMessages }));
+        })
+        .catch(e => {
+          console.warn("Failed to load chat history from database:", e);
+          // Fallback to localStorage or empty array
+          setMessages([]);
+        });
+    } else if (sessionId) {
+      // If no user but session exists, try to load from localStorage
+      const localMessages = sessionMessages[sessionId] || [];
+      setMessages(localMessages);
+    } else {
+      setMessages([]);
+    }
+  }, [sessionId, user?.user_id]);
 
   // Persist chat state to localStorage
   useEffect(() => {
@@ -126,11 +150,29 @@ export default function TabsApp() {
   }
 
   // Switch to a session
-  function switchToSession(session) {
+  async function switchToSession(session) {
     setSessionId(session.session_id);
     setCurrentFilename(session.last_file?.original_filename || "");
     try { localStorage.setItem("chat_session_id", session.session_id); } catch {}
-    // Messages will be loaded automatically by the useEffect above
+    
+    // Load chat history from database
+    if (user?.user_id) {
+      try {
+        const historyRes = await getSessionChatHistory(session.session_id);
+        const dbMessages = historyRes.messages || [];
+        setMessages(dbMessages);
+        setSessionMessages(prev => ({ ...prev, [session.session_id]: dbMessages }));
+      } catch (e) {
+        console.warn("Failed to load chat history:", e);
+        // Fallback to localStorage if database fails
+        const localMessages = sessionMessages[session.session_id] || [];
+        setMessages(localMessages);
+      }
+    } else {
+      // If no user, just load from localStorage
+      const localMessages = sessionMessages[session.session_id] || [];
+      setMessages(localMessages);
+    }
   }
 
   async function handleUpload() {
@@ -179,7 +221,7 @@ export default function TabsApp() {
 
   const visibleTabs = {
     admin: ["chat", "groups", "chunks", "admin"],
-    developer: ["groups", "chunks"],
+    developer: ["chat", "groups", "chunks"],
     employee: ["chat", "groups"],
     client: ["chat", "groups"]
   };
@@ -251,7 +293,7 @@ export default function TabsApp() {
                         padding: "8px"
                       }}
                     >
-                      <div style={{ fontWeight: 600 }}>{s.last_file?.original_filename || s.session_id}</div>
+                      <div style={{ fontWeight: 600 }}>{s.name || s.last_file?.original_filename || s.session_id}</div>
                       <div style={{ fontSize: 12, opacity: 0.8 }}>Updated: {s.last_file?.uploaded_at ? new Date(s.last_file.uploaded_at).toLocaleString() : (s.created_at ? new Date(s.created_at).toLocaleString() : "")}</div>
                     </button>
                     <button

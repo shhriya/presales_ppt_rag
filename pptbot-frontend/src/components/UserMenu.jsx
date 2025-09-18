@@ -11,6 +11,18 @@ export default function UserMenu() {
   async function changePassword() {
     try {
       setMsg("");
+      
+      // Validate password
+      if (!newPwd || newPwd.trim() === "") {
+        setMsg("Password cannot be empty");
+        return;
+      }
+      
+      if (newPwd.length < 6) {
+        setMsg("Password must be at least 6 characters long");
+        return;
+      }
+      
       const headers = { "Content-Type": "application/json" };
       if (user?.user_id) headers["X-User-Id"] = String(user.user_id);
       if (user?.role) headers["X-User-Role"] = String(user.role);

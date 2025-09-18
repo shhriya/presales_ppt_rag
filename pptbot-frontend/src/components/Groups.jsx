@@ -183,8 +183,8 @@ export default function Groups() {
 
   async function handleViewFile(fileId) {
     try {
-      // Open file in new tab
-      window.open(`${BASE_URL}/files/${fileId}`, '_blank');
+      // Open file in new tab for inline preview
+      window.open(`${BASE_URL}/api/files/${fileId}`, '_blank');
     } catch (e) {
       setError("Failed to open file");
     }
@@ -192,8 +192,8 @@ export default function Groups() {
 
   async function handleDownloadFile(fileId, filename) {
     try {
-      // Download file
-      const response = await fetch(`${BASE_URL}/files/${fileId}/download`);
+      // Download file via explicit download endpoint
+      const response = await fetch(`${BASE_URL}/api/files/${fileId}/download`);
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
@@ -305,8 +305,9 @@ export default function Groups() {
               onClick={() => setShowCreateGroup(true)}
               style={baseBtnStyle}
               {...interactiveButtonProps("#3b82f6", "#1e40af")}
+              title="Create Group"
             >
-              Create Group
+              ➕
             </button>
           )}
         </div>
@@ -359,26 +360,26 @@ export default function Groups() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {isSmall && (
-                  <button className="btn" onClick={() => setSelectedGroup(null)} style={baseBtnStyle} {...interactiveButtonProps("#334155", "#1f2937")}>← Back</button>
+                  <button className="btn" onClick={() => setSelectedGroup(null)} style={baseBtnStyle} {...interactiveButtonProps("#334155", "#1f2937")} title="Back">←</button>
                 )}
                 <h2 style={{ margin: 0 }}>{selectedGroup.name} - Files</h2>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn" onClick={() => setShowUploadFile(true)} style={baseBtnStyle} {...interactiveButtonProps("#10b981", "#065f46")}>
-                  Upload File
+                <button className="btn" onClick={() => setShowUploadFile(true)} style={baseBtnStyle} {...interactiveButtonProps("#10b981", "#065f46")} title="Upload File">
+                  📤
                 </button>
                 {isAdmin && (
                   <>
-                    <button className="btn" onClick={() => setShowManageUsers(true)} style={baseBtnStyle} {...interactiveButtonProps("rgb(107, 106, 106)", "rgb(155, 155, 155)")}>
-                      Manage Users
+                    <button className="btn" onClick={() => setShowManageUsers(true)} style={baseBtnStyle} {...interactiveButtonProps("rgb(107, 106, 106)", "rgb(155, 155, 155)")} title="Manage Users">
+                      👥
                     </button>
-                    <button className="btn" onClick={async () => { if (window.confirm(`Delete group \"${selectedGroup.name}\"? This cannot be undone.`)) { try { await deleteGroup(selectedGroup.group_id); await loadGroups(); setSelectedGroup(null); } catch (e) { setError(e.message); } } }} style={baseBtnStyle} {...interactiveButtonProps("#ef4444", "#b91c1c")}>
-                      Delete Group
+                    <button className="btn" onClick={async () => { if (window.confirm(`Delete group \"${selectedGroup.name}\"? This cannot be undone.`)) { try { await deleteGroup(selectedGroup.group_id); await loadGroups(); setSelectedGroup(null); } catch (e) { setError(e.message); } } }} style={baseBtnStyle} {...interactiveButtonProps("#ef4444", "#b91c1c")} title="Delete Group">
+                      🗑️
                     </button>
                   </>
                 )}
-                <button className="btn" onClick={() => loadGroupFiles(selectedGroup.group_id)} style={baseBtnStyle} {...interactiveButtonProps("#334155", "#1f2937")}>
-                  Refresh
+                <button className="btn" onClick={() => loadGroupFiles(selectedGroup.group_id)} style={baseBtnStyle} {...interactiveButtonProps("#334155", "#1f2937")} title="Refresh">
+                  🔄
                 </button>
               </div>
             </div>
@@ -411,33 +412,44 @@ export default function Groups() {
                         <div style={{ fontSize: 13, color: "#94a3b8" }}>
                           Uploaded: {file.uploaded_at ? new Date(file.uploaded_at).toLocaleDateString() : "Unknown"}
                         </div>
+                        {file.uploader && (
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>
+                            By: {file.uploader.username} ({file.uploader.email})
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                       <button
                         className="btn"
-                        onClick={() => navigate(`/files/${file.id}`)}
+                        onClick={() => handleViewFile(file.id)}
                         style={baseBtnStyle}
                         {...interactiveButtonProps("#3b82f6", "#1e40af")}
+                        title="View File"
                       >
-                        View
+                        👁️
                       </button>
                       <button
                         className="btn"
                         onClick={() => handleDownloadFile(file.id, file.original_filename)}
                         style={baseBtnStyle}
                         {...interactiveButtonProps("#10b981", "#065f46")}
+                        title="Download File"
                       >
-                        Download
+                        ⬇️
                       </button>
-                      <button
-                        className="btn"
-                        onClick={() => handleRemoveFileFromGroup(file.id, selectedGroup.group_id)}
-                        style={baseBtnStyle}
-                        {...interactiveButtonProps("#ef4444", "#b91c1c")}
-                      >
-                        Remove
-                      </button>
+                      {/* Only show remove button if user is admin or uploaded the file */}
+                      {(isAdmin || (file.uploaded_by && file.uploaded_by === user?.user_id)) && (
+                        <button
+                          className="btn"
+                          onClick={() => handleRemoveFileFromGroup(file.id, selectedGroup.group_id)}
+                          style={baseBtnStyle}
+                          {...interactiveButtonProps("#ef4444", "#b91c1c")}
+                          title="Remove File"
+                        >
+                          ❌
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -528,15 +540,17 @@ export default function Groups() {
                 className="btn"
                 onClick={() => setShowCreateGroup(false)}
                 style={{ background: "#6b7280" }}
+                title="Cancel"
               >
-                Cancel
+                ❌
               </button>
               <button
                 className="btn"
                 onClick={handleCreateGroup}
                 style={{ background: "#3b82f6", color: "white" }}
+                title="Create Group"
               >
-                Create Group
+                ✅
               </button>
             </div>
           </div>
@@ -612,16 +626,18 @@ export default function Groups() {
                 }}
                 style={{ background: "#6b7280" }}
                 disabled={uploadingFile}
+                title="Cancel"
               >
-                Cancel
+                ❌
               </button>
               <button
                 className="btn"
                 onClick={handleFileUpload}
                 style={{ background: "#10b981", color: "white" }}
                 disabled={!selectedFile || uploadingFile}
+                title={uploadingFile ? "Uploading..." : "Upload & Add to Group"}
               >
-                {uploadingFile ? "Uploading..." : "Upload & Add to Group"}
+                {uploadingFile ? "⏳" : "📤"}
               </button>
             </div>
           </div>
@@ -683,8 +699,9 @@ export default function Groups() {
                   className="btn"
                   onClick={handleAddUserToGroup}
                   style={{ background: "#10b981", color: "white", flex: "1 1 140px" }}
+                  title="Add User"
                 >
-                  Add User
+                  ➕
                 </button>
               </div>
               {missingUserEmail && (
@@ -727,7 +744,7 @@ export default function Groups() {
                     }}
                     style={{ background: "#f59e0b", color: "#111827" }}
                   >
-                    Go to Admin → Create User
+                    👤
                   </button>
                 </div>
               )}
@@ -779,8 +796,9 @@ export default function Groups() {
                         className="btn"
                         onClick={() => handleRemoveUserFromGroup(user.user_id)}
                         style={{ background: "#ef4444", color: "white", flex: "0 0 auto" }}
+                        title="Remove User"
                       >
-                        Remove
+                        ❌
                       </button>
                     </div>
                   ))}

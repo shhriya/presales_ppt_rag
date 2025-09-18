@@ -3,7 +3,7 @@ import os
 import json
 from fastapi import APIRouter, HTTPException, Query
 from backend.config import SESSIONS_DIR
-from backend.database import SessionLocal, Session as DBSession, File as DBFile, User
+from backend.database import SessionLocal, Session as DBSession, File as DBFile, User, load_chat_history
 import os
 import shutil
 
@@ -125,14 +125,40 @@ def get_chunks(session_id: str = Query(...)):
 # List my sessions with summary
 # -----------------------------
 @router.get("/api/my-sessions")
-def my_sessions(x_user_id: int | None = Query(default=None)):
+def my_sessions(x_user_id: int | None = Query(default=None), x_user_role: str | None = Query(default=None)):
     db = SessionLocal()
     sessions = []
     try:
-        q = db.query(DBSession)
-        if x_user_id:
-            q = q.filter(DBSession.created_by == x_user_id)
-        for s in q.all():
+        # Determine visibility: admins see all sessions; others see only theirs
+        is_admin = (x_user_role or "").lower() == "admin" or (x_user_id == 0)
+
+        # Start with all or none depending on role
+        base_query = db.query(DBSession)
+
+        # For non-admins, collect sessions they created OR where they uploaded files
+        visible_session_ids = set()
+        if is_admin or not x_user_id:
+            # Admin or unknown user -> all sessions
+            for s in base_query.all():
+                visible_session_ids.add(s.id)
+        else:
+            # Sessions created by the user
+            for s in base_query.filter(DBSession.created_by == x_user_id).all():
+                visible_session_ids.add(s.id)
+
+            # Sessions where the user uploaded any file
+            user_files = db.query(DBFile).filter(DBFile.uploaded_by == x_user_id).all()
+            for f in user_files:
+                # file.id is in format "{session_id}_{filename}"
+                sid = f.id.split("_", 1)[0]
+                if sid:
+                    visible_session_ids.add(sid)
+
+        # Build response for the visible sessions
+        for sid in visible_session_ids:
+            s = db.query(DBSession).filter(DBSession.id == sid).first()
+            if not s:
+                continue
             files = db.query(DBFile).filter(DBFile.id.like(f"{s.id}_%")).all()
             last_file = None
             if files:
@@ -144,6 +170,7 @@ def my_sessions(x_user_id: int | None = Query(default=None)):
                     uploader = {"user_id": u.user_id, "username": u.username, "role": u.role}
             sessions.append({
                 "session_id": s.id,
+                "name": s.name or (last_file.original_filename if last_file else f"Session {s.id[:8]}"),
                 "created_at": s.created_at.isoformat() if s.created_at else None,
                 "created_by": s.created_by,
                 "uploader": uploader,
@@ -156,6 +183,26 @@ def my_sessions(x_user_id: int | None = Query(default=None)):
     finally:
         db.close()
     return {"sessions": sessions}
+
+@router.get("/api/sessions/{session_id}/chat-history")
+def get_session_chat_history(session_id: str, x_user_id: int | None = Query(default=None)):
+    """Get chat history for a specific session."""
+    db = SessionLocal()
+    try:
+        # Check if session exists and user has permission
+        session = db.query(DBSession).filter(DBSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Check if user owns the session (if user_id provided)
+        if x_user_id and session.created_by != x_user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to access this session")
+        
+        # Load chat history
+        chat_history = load_chat_history(session_id)
+        return {"session_id": session_id, "messages": chat_history}
+    finally:
+        db.close()
 
 
 # -----------------------------

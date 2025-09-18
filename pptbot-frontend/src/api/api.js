@@ -75,9 +75,26 @@ export async function listFiles() {
 }
 
 export async function listMySessions(userId) {
-  const url = userId ? `/api/my-sessions?x_user_id=${encodeURIComponent(userId)}` : `/api/my-sessions`;
-  const res = await fetch(url, { headers: { ...authHeaders() } });
+  const headers = { ...authHeaders() };
+  const role = headers["X-User-Role"];
+  const params = new URLSearchParams();
+  if (userId) params.set("x_user_id", String(userId));
+  if (role) params.set("x_user_role", String(role));
+  const url = params.toString() ? `/api/my-sessions?${params.toString()}` : `/api/my-sessions`;
+  const res = await fetch(url, { headers });
   if (!res.ok) throw new Error((await res.json()).detail || "Failed to fetch sessions");
+  return res.json();
+}
+
+export async function getSessionChatHistory(sessionId) {
+  const headers = { ...authHeaders() };
+  const userId = headers["X-User-Id"];
+  const url = userId ? `/api/sessions/${sessionId}/chat-history?x_user_id=${encodeURIComponent(userId)}` : `/api/sessions/${sessionId}/chat-history`;
+  
+  const res = await fetch(url, { 
+    headers 
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || "Failed to fetch chat history");
   return res.json();
 }
 

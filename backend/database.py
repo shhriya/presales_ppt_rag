@@ -71,16 +71,20 @@ class UserGroup(Base):
 class Session(Base):
     __tablename__ = "sessions"
     id = Column(String(255), primary_key=True, index=True)
+    name = Column(String(255), nullable=True)  # Meaningful session name
     last_q = Column(Text, default="")
     last_a = Column(Text, default="")
+    chat_history = Column(Text)  # JSON string of chat messages
     created_by = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class File(Base):
     __tablename__ = "files"
     id = Column(String(255), primary_key=True)
     filename = Column(Text)
     original_filename = Column(Text)
+    file_path = Column(Text)  # Physical file path on disk
     uploaded_by = Column(Integer, ForeignKey("users.user_id"))
     uploaded_at = Column(DateTime, default=datetime.utcnow)
     file_groups = relationship("FileGroup", back_populates="file")
@@ -104,14 +108,42 @@ def init_db():
 # ============================================================
 # 🔹 Minimal helpers required by routers/upload.py
 # ============================================================
-def ensure_session(session_id: str, user_id: int | None = None) -> None:
+def ensure_session(session_id: str, user_id: int | None = None, session_name: str | None = None) -> None:
     """Ensure a session row exists."""
     db = SessionLocal()
     try:
         existing = db.query(Session).filter(Session.id == session_id).first()
         if not existing:
-            db.add(Session(id=session_id, created_by=user_id))
+            db.add(Session(id=session_id, created_by=user_id, name=session_name))
             db.commit()
+        elif session_name and not existing.name:
+            # Update session name if it's not set
+            existing.name = session_name
+            db.commit()
+    finally:
+        db.close()
+
+def save_chat_history(session_id: str, messages: list) -> None:
+    """Save chat history to database."""
+    db = SessionLocal()
+    try:
+        session = db.query(Session).filter(Session.id == session_id).first()
+        if session:
+            import json
+            session.chat_history = json.dumps(messages)
+            db.commit()
+    finally:
+        db.close()
+
+def load_chat_history(session_id: str) -> list:
+    """Load chat history from database."""
+    db = SessionLocal()
+    try:
+        session = db.query(Session).filter(Session.id == session_id).first()
+        if session and session.chat_history:
+            import json
+            return json.loads(session.chat_history)
+        return []
     finally:
         db.close()
 
@@ -185,11 +217,23 @@ def get_group_files(group_id: int, user_id: int | None = None):
         for fg in fgs:
             f = db.query(File).filter(File.id == fg.file_id).first()
             if f:
+                # Get uploader info
+                uploader = None
+                if f.uploaded_by:
+                    uploader_user = db.query(User).filter(User.user_id == f.uploaded_by).first()
+                    if uploader_user:
+                        uploader = {
+                            "user_id": uploader_user.user_id,
+                            "username": uploader_user.username,
+                            "email": uploader_user.email
+                        }
+                
                 results.append({
                     "id": f.id,
                     "original_filename": f.original_filename,
                     "uploaded_at": f.uploaded_at.isoformat() if f.uploaded_at else None,
                     "uploaded_by": f.uploaded_by,
+                    "uploader": uploader
                 })
         return results
     finally:

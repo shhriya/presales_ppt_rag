@@ -3,6 +3,7 @@ from backend.models import AskBody
 from backend.config import SESSIONS, SESSIONS_DIR
 from backend.logic.qa import search_and_answer
 from backend.logic.faiss_index import build_faiss_index
+from backend.database import save_chat_history, load_chat_history
 import os
 import json
 
@@ -16,16 +17,26 @@ async def ask(body: AskBody):
     if not s:
         raise HTTPException(status_code=404, detail="Invalid session_id. Upload a file first.")
 
-    last_q = s.get("last_q", "")
-    last_a = s.get("last_a", "")
-
+    # Load chat history from database
+    chat_history = load_chat_history(body.session_id)
+    
+    # Build context from recent chat history (last 3 exchanges)
+    recent_history = chat_history[-6:] if len(chat_history) > 6 else chat_history
+    context_parts = []
+    for i in range(0, len(recent_history), 2):
+        if i + 1 < len(recent_history):
+            user_msg = recent_history[i]
+            assistant_msg = recent_history[i + 1]
+            if user_msg.get("role") == "user" and assistant_msg.get("role") == "assistant":
+                context_parts.append(f"User: {user_msg.get('content', '')}")
+                context_parts.append(f"Assistant: {assistant_msg.get('content', '')}")
+    
     context_query = f"""
-Previous exchange:
-User: {last_q}
-Assistant: {last_a}
+Previous exchanges:
+{chr(10).join(context_parts)}
 
 New question: {body.question}
-"""
+""" if context_parts else body.question
 
     # Ensure index and texts exist; if not, try to restore from disk
     if not s.get("index") or not s.get("texts"):
@@ -54,7 +65,19 @@ New question: {body.question}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Answering failed: {e}")
 
+    # Add new messages to chat history
+    new_messages = [
+        {"role": "user", "content": body.question},
+        {"role": "assistant", "content": answer}
+    ]
+    updated_history = chat_history + new_messages
+    
+    # Save updated chat history to database
+    save_chat_history(body.session_id, updated_history)
+    
+    # Update in-memory session for backward compatibility
     s["last_q"] = body.question
     s["last_a"] = answer
 
     return {"answer": answer}
+

@@ -82,6 +82,16 @@ def change_password(user_id: int, data: PasswordChange):
     if not user:
         db.close()
         raise HTTPException(status_code=404, detail="User not found")
+    
+    # Validate password
+    if not data.password or data.password.strip() == "":
+        db.close()
+        raise HTTPException(status_code=400, detail="Password cannot be empty")
+    
+    if len(data.password) < 6:
+        db.close()
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
+    
     user.password_hash = data.password
     db.commit()
     db.close()

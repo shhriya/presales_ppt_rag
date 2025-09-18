@@ -39,8 +39,14 @@ def list_session_files(sessions_dir):
             if not os.path.isfile(fpath) or fname in IGNORE_FILES or os.path.splitext(fname)[1].lower() in IGNORE_EXTS:
                 continue
             
-            uploader_info = meta.get(fname, {}).get("uploaded_by", {})
-            uploaded_at = meta.get(fname, {}).get("uploaded_at", datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat())
+            meta_entry = meta.get(fname, {})
+            uploader_info = meta_entry.get("uploaded_by", {})
+            uploaded_at = meta_entry.get("uploaded_at", datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat())
+            source = meta_entry.get("source", "chat")
+
+            # Only include files uploaded from chatbot; exclude other sources
+            if source != "chat":
+                continue
             
             files.append({
                 "id": f"{sid}_{fname}",

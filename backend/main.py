@@ -69,9 +69,9 @@
 
 from fastapi import FastAPI, Form, File, UploadFile, Response, Header
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import auth, upload, sessions, files, ask, groups, users
+from backend.routers import auth, upload, sessions, files, ask, groups, users, file_serve
 from backend.database import add_file_to_group
-from backend.routers.upload import process_upload_file
+from backend.routers.upload import process_upload_file, process_group_upload_file
 
 from pathlib import Path
 from dotenv import load_dotenv
@@ -107,18 +107,28 @@ async def simple_upload(
     group_id: int = Form(None),
     x_user_id: int | None = Header(default=None, alias="X-User-Id"),
     x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    x_user_name: str | None = Header(default=None, alias="X-User-Name"),
+    x_user_email: str | None = Header(default=None, alias="X-User-Email"),
 ):
-    # Use the helper to actually process the upload
-    result = await process_upload_file(file, x_user_id, x_user_role)
-
-    # Optionally link file to group
-    if group_id and result.get("file_id"):
-        try:
-            add_file_to_group(result["file_id"], group_id)
-        except Exception as e:
-            print(f"Warning: Failed to add file to group: {e}")
-
-    return result
+    # If group_id is provided, use group upload (no session creation)
+    if group_id:
+        result = await process_group_upload_file(
+            file, x_user_id, x_user_role, x_user_name, x_user_email
+        )
+        # Link file to group
+        if result.get("file_id"):
+            try:
+                add_file_to_group(result["file_id"], group_id)
+            except Exception as e:
+                print(f"Warning: Failed to add file to group: {e}")
+        return result
+    else:
+        # Chatbot upload - create session and chunk for Q&A
+        result = await process_upload_file(
+            file, x_user_id, x_user_role, x_user_name, x_user_email, 
+            x_session_id=None, upload_source="chat"
+        )
+        return result
 
 # Explicit preflight handler
 @app.options("/upload")
@@ -133,3 +143,4 @@ app.include_router(files.router)
 app.include_router(ask.router)
 app.include_router(groups.router)
 app.include_router(users.router)
+app.include_router(file_serve.router)

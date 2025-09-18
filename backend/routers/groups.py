@@ -115,10 +115,25 @@ def api_add_file_to_group(group_id: int, file_group: FileGroupRequest, user = De
 
 @router.delete("/api/groups/{group_id}/files/{file_id}")
 def api_remove_file_from_group(group_id: int, file_id: str, user = Depends(get_current_user)):
-    """Remove a file from a group"""
-    # TODO: Add permission check here
-    remove_file_from_group(file_id, group_id)
-    return {"message": "File removed from group successfully"}
+    """Remove a file from a group - only the uploader can remove their own file"""
+    from backend.database import SessionLocal, File
+    
+    db = SessionLocal()
+    try:
+        # Check if file exists and get uploader info
+        file_record = db.query(File).filter(File.id == file_id).first()
+        if not file_record:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Check if user is the uploader or admin
+        if user["role"] != "admin" and file_record.uploaded_by != user["user_id"]:
+            raise HTTPException(status_code=403, detail="Only the file uploader can remove this file")
+        
+        # Remove the file from group
+        remove_file_from_group(file_id, group_id)
+        return {"message": "File removed from group successfully"}
+    finally:
+        db.close()
 
 @router.get("/api/files/my", response_model=List[FileResponse])
 def api_get_my_files(user = Depends(get_current_user)):

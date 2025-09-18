@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Frontend Test</title>
+</head>
+<body>
+    <h1>Frontend Connection Test</h1>
+    <div id="results"></div>
+    
+    <script>
+        async function testConnection() {
+            const results = document.getElementById('results');
+            
+            try {
+                // Test basic connection
+                const response = await fetch('http://localhost:9000/');
+                const data = await response.json();
+                results.innerHTML += `<p>✅ Backend connection: ${data.message}</p>`;
+                
+                // Test sessions endpoint
+                const sessionsResponse = await fetch('http://localhost:9000/api/my-sessions');
+                const sessionsData = await sessionsResponse.json();
+                results.innerHTML += `<p>✅ Sessions endpoint: ${sessionsData.sessions.length} sessions found</p>`;
+                
+                // Test chat history endpoint
+                if (sessionsData.sessions.length > 0) {
+                    const sessionId = sessionsData.sessions[0].session_id;
+                    const chatResponse = await fetch(`http://localhost:9000/api/sessions/${sessionId}/chat-history`);
+                    const chatData = await chatResponse.json();
+                    results.innerHTML += `<p>✅ Chat history endpoint: ${chatData.messages.length} messages found</p>`;
+                } else {
+                    results.innerHTML += `<p>ℹ️ No sessions available for chat history test</p>`;
+                }
+                
+            } catch (error) {
+                results.innerHTML += `<p>❌ Error: ${error.message}</p>`;
+            }
+        }
+        
+        // Run test when page loads
+        testConnection();
+    </script>
+</body>
+</html>

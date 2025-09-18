@@ -127,6 +127,55 @@ from backend.logic.universal_extractor import universal_extractor
 
 router = APIRouter()
 
+# 🔹 Group upload logic - no session creation, just file storage
+async def process_group_upload_file(
+    file: UploadFile,
+    x_user_id: int | None = None,
+    x_user_role: str | None = None,
+    x_user_name: str | None = None,
+    x_user_email: str | None = None,
+):
+    """Process file upload for groups - only stores file, no session creation or chunking"""
+    # Create a unique file ID without session
+    file_id = f"group_{uuid.uuid4()}_{file.filename}"
+    
+    # Create uploads directory if it doesn't exist
+    uploads_dir = os.path.join(SESSIONS_DIR, "..", "uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
+    
+    # Save file to uploads directory
+    file_path = os.path.join(uploads_dir, file_id)
+    contents = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    print(f"📂 Saved group file: {file.filename} ({len(contents)} bytes) -> {file_id}")
+    
+    # Register file in database without session
+    try:
+        from backend.database import SessionLocal, File
+        db = SessionLocal()
+        try:
+            db_file = File(
+                id=file_id,
+                original_filename=file.filename,
+                file_path=file_path,
+                uploaded_by=x_user_id,
+                uploaded_at=datetime.utcnow()
+            )
+            db.add(db_file)
+            db.commit()
+            print(f"✅ Registered group file in DB: {file_id}")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"⚠️ Warning: DB register failed for group file: {e}")
+    
+    return {
+        "file_id": file_id,
+        "filename": file.filename,
+        "uploaded_at": datetime.utcnow().isoformat()
+    }
+
 # 🔹 Core upload logic moved to a helper
 async def process_upload_file(
     file: UploadFile,
@@ -135,6 +184,7 @@ async def process_upload_file(
     x_user_name: str | None = None,
     x_user_email: str | None = None,
     x_session_id: str | None = None,
+    upload_source: str | None = None,
 ):
     # 1️⃣ Generate or reuse a session ID
     session_id = x_session_id or str(uuid.uuid4())
@@ -187,6 +237,7 @@ async def process_upload_file(
                 "email": x_user_email,
                 "role": x_user_role,
             },
+            "source": upload_source or "chat",
         }
         existing = [e for e in existing if e.get("filename") != file.filename] + [entry]
         with open(meta_path, "w", encoding="utf-8") as mf:
@@ -213,7 +264,9 @@ async def process_upload_file(
     # 8️⃣ Try DB registration
     try:
         user_id = x_user_id or 1
-        ensure_session(session_id, user_id)
+        # Create meaningful session name from filename
+        session_name = os.path.splitext(file.filename)[0] if file.filename else f"Session {session_id[:8]}"
+        ensure_session(session_id, user_id, session_name)
         register_file(session_id, file.filename, user_id, file_path, session_path, slides_data)
         print(f"✅ Registered file in DB")
     except Exception as e:
@@ -239,9 +292,10 @@ async def upload_file(
     x_user_name: str | None = Header(default=None, alias="X-User-Name"),
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_upload_source: str | None = Header(default=None, alias="X-Upload-Source"),
 ):
     return await process_upload_file(
-        file, x_user_id, x_user_role, x_user_name, x_user_email, x_session_id
+        file, x_user_id, x_user_role, x_user_name, x_user_email, x_session_id, upload_source=x_upload_source
     )
 
 
@@ -254,6 +308,7 @@ async def upload_file(
     x_user_name: str | None = Header(default=None, alias="X-User-Name"),
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+    x_upload_source: str | None = Header(default=None, alias="X-Upload-Source"),
 ):
     # 1️⃣ Generate or reuse a session ID
     session_id = x_session_id or str(uuid.uuid4())
@@ -306,6 +361,7 @@ async def upload_file(
                 "email": x_user_email,
                 "role": x_user_role,
             },
+            "source": x_upload_source or "chat",
         }
         # replace if already present for same filename
         existing = [e for e in existing if e.get("filename") != file.filename] + [entry]
@@ -333,7 +389,9 @@ async def upload_file(
     # 8️⃣ Try DB registration, but don't fail session creation if DB fails
     try:
         user_id = x_user_id or 1
-        ensure_session(session_id, user_id)
+        # Create meaningful session name from filename
+        session_name = os.path.splitext(file.filename)[0] if file.filename else f"Session {session_id[:8]}"
+        ensure_session(session_id, user_id, session_name)
         register_file(session_id, file.filename, user_id, file_path, session_path, slides_data)
         print(f"✅ Registered file in DB")
     except Exception as e:
