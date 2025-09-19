@@ -336,11 +336,11 @@ export default function Groups() {
                   color: "white" 
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>
+                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 , color:"#0a225e"}}>
                   {group.name}
                 </div>
                 {group.description && (
-                  <div style={{ fontSize: 14, color: "white" }}>
+                  <div style={{ fontSize: 14, color:"#5b6b9a"}}>
                     {group.description}
                   </div>
                 )}
@@ -406,7 +406,7 @@ export default function Groups() {
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <div style={{ fontSize: "24px" }}>{getFileIcon(file.original_filename)}</div>
                       <div style={{ color: "white" }}>
-                        <div style={{ fontWeight: 600, fontSize: 16 }}>
+                        <div style={{ fontWeight: 600, fontSize: 16, color:"#6b7280" }}>
                           {file.original_filename}
                         </div>
                         <div style={{ fontSize: 13, color: "#94a3b8" }}>
@@ -782,7 +782,7 @@ export default function Groups() {
                       }}
                     >
                       <div style={{ minWidth: 0, flex: "1 1 240px" }}>
-                        <div style={{ fontWeight: 600, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" , color: "white"}}>
+                        <div style={{ fontWeight: 600, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {user.username}
                         </div>
                         <div style={{ fontSize: 13, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis" }}>

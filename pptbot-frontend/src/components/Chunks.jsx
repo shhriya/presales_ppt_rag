@@ -32,7 +32,7 @@ export default function Chunks() {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        color: "white",
+        
         height: "100vh",
         padding: "20px",
         boxSizing: "border-box",

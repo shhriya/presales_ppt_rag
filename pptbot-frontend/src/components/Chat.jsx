@@ -29,25 +29,9 @@ export default function Chat({ messages, disabled, onSend, isAsking }) {
   }
 
   return (
-    <div
-      className="chat-container"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh", // full screen height
-        maxHeight: "100vh",
-      }}
-    >
+    <div className="chat-container">
       {/* scrollable chat area */}
-      <div
-        className="chat-list"
-        ref={listRef}
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "12px",
-        }}
-      >
+      <div className="chat-list" ref={listRef}>
         {messages.map((m, i) => (
           <MessageBubble key={i} role={m.role} content={m.content} />
         ))}
@@ -99,16 +83,7 @@ export default function Chat({ messages, disabled, onSend, isAsking }) {
       </div>
 
       {/* input fixed at bottom */}
-      <div
-        className="chat-input"
-        style={{
-          display: "flex",
-          gap: 8,
-          padding: "8px",
-          borderTop: "1px solid #e5e7eb",
-          background: "white",
-        }}
-      >
+      <div className="chat-input">
         <input
           id="chat-input"
           name="chatInput"

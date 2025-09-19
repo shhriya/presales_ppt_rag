@@ -68,8 +68,8 @@ export default function AdminUsers() {
   return (
     <div className="app">
       <div className="header">
-        <h1 style={{ color: "white" }}>Admin - Users</h1>
-        <p className="sub" style={{ color: "white" }}>
+        <h1>Admin - Users</h1>
+        <p className="sub">
           Manage all application users here
         </p>
       </div>

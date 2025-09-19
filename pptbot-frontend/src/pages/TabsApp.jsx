@@ -230,66 +230,61 @@ export default function TabsApp() {
 
   return (
     <div className="app">
-      <div className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-  <div>
-    <h1>PreSales Insight Bot</h1>
-    <div className="sub">AI assistant for exploring and managing presales presentation content.</div>
-  </div>
-  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    <UserMenu />
-    <button
-      className="btn"
-      onClick={() => window.location.href = "/logout"}
-      style={{ background: "#f87171", color: "#fff", borderRadius: 6, padding: "6px 12px" }}
-    >
-      Logout
-    </button>
-  </div>
-</div>
+      <div className="header">
+        <div>
+          <h1>PreSales Insight Bot</h1>
+          <div className="sub">AI assistant for exploring and managing presales presentation content.</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <UserMenu />
+          <button className="btn" onClick={() => window.location.href = "/logout"}>Logout</button>
+        </div>
+      </div>
 
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      <div className="tabs" >
         {tabsToShow.includes("chat") && (
-          <button className="btn" onClick={() => setActiveTabAndUrl("chat")} style={{ opacity: activeTab === "chat" ? 1 : 0.7 }}>Chat</button>
+          <button className={`tab-btn ${activeTab === "chat" ? "active" : ""}`} onClick={() => setActiveTabAndUrl("chat")}>Chat</button>
         )}
         {tabsToShow.includes("groups") && (
-          <button className="btn" onClick={() => setActiveTabAndUrl("groups")} style={{ opacity: activeTab === "groups" ? 1 : 0.7 }}>Groups</button>
+          <button className={`tab-btn ${activeTab === "groups" ? "active" : ""}`} onClick={() => setActiveTabAndUrl("groups")}>Groups</button>
         )}
         {tabsToShow.includes("chunks") && (
-          <button className="btn" onClick={() => setActiveTabAndUrl("chunks")} style={{ opacity: activeTab === "chunks" ? 1 : 0.7 }}>Chunks</button>
+          <button className={`tab-btn ${activeTab === "chunks" ? "active" : ""}`} onClick={() => setActiveTabAndUrl("chunks")}>Chunks</button>
         )}
         {tabsToShow.includes("admin") && (
-          <button className="btn" onClick={() => setActiveTabAndUrl("admin")} style={{ opacity: activeTab === "admin" ? 1 : 0.7 }}>Admin</button>
+          <button className={`tab-btn ${activeTab === "admin" ? "active" : ""}`} onClick={() => setActiveTabAndUrl("admin")}>Admin</button>
         )}
       </div>
 
       {/* Panels */}
       {activeTab === "chat" && tabsToShow.includes("chat") && (
-        <div style={{ display: "flex", gap: 12 }}>
-          <div style={{ width: 260, flex: "0 0 auto" }}>
+        <div className="chat-layout">
+          <div className="sidebar">
             <div className="panel" style={{ padding: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={{ fontWeight: 600 }}>My Sessions</div>
                 <button 
                   className="btn" 
                   onClick={createNewSession}
-                  style={{ padding: "4px 8px", fontSize: 12, background: "#10b981", color: "#fff" }}
+                  style={{ padding: "6px 10px", fontSize: 12 }}
                 >
                   + New
                 </button>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
+              <div className="list">
                 {sessions.map(s => (
-                  <div key={s.session_id} style={{ display: "flex", gap: 4, alignItems: "flex-start" }}>
+                  <div key={s.session_id} className="sidebar-item">
                     <button
                       className="btn"
                       onClick={() => switchToSession(s)}
                       style={{ 
                         flex: 1, 
                         textAlign: "left", 
-                        background: s.session_id === sessionId ? "#2563eb" : undefined, 
-                        color: s.session_id === sessionId ? "#fff" : undefined,
+                        background: s.session_id === sessionId ? "var(--primary)" : "#fff", 
+                        color: s.session_id === sessionId ? "#fff" : "var(--text)",
+                        border: s.session_id === sessionId ? "1px solid var(--primary)" : "1px solid var(--border)",
                         padding: "8px"
                       }}
                     >
@@ -300,15 +295,13 @@ export default function TabsApp() {
                       className="btn"
                       onClick={() => handleDeleteSession(s.session_id)}
                       style={{ 
-                        padding: "4px 6px", 
+                        padding: "6px 8px", 
                         fontSize: 12, 
-                        background: "#ef4444", 
-                        color: "#fff",
                         minWidth: "auto"
                       }}
                       title="Delete session"
                     >
-                      ×
+                      🗑️
                     </button>
                   </div>
                 ))}

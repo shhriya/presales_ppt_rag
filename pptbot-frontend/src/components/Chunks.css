@@ -3,12 +3,12 @@
   }
   
   .scroll-container::-webkit-scrollbar-track {
-    background: #1e293b; /* dark background for track */
+    /* background: #1e293b; dark background for track */
     border-radius: 8px;
   }
   
   .scroll-container::-webkit-scrollbar-thumb {
-    background: #475569; /* muted grey */
+    background: #475569;
     border-radius: 8px;
     transition: background 0.3s ease;
   }
