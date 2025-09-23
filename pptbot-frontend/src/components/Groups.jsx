@@ -809,7 +809,7 @@ async function handleViewFile(fileId, filename) {
                       }}
                     >
                       <div style={{ minWidth: 0, flex: "1 1 240px" }}>
-                        <div style={{ fontWeight: 600, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{color: "#ffffffff", fontWeight: 600, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {user.username}
                         </div>
                         <div style={{ fontSize: 13, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis" }}>
