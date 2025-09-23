@@ -86,10 +86,10 @@ except Exception as e:
 
 app = FastAPI()
 
-# ✅ Enable CORS
+# ✅ Enable CORS for both 3000 and 3001
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

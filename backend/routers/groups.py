@@ -18,6 +18,12 @@ class GroupCreate(BaseModel):
     name: str
     description: Optional[str] = None
 
+class UploaderInfo(BaseModel):
+    user_id: int
+    username: str
+    email: str
+    role: str
+
 class GroupResponse(BaseModel):
     group_id: int
     name: str
@@ -30,6 +36,7 @@ class FileResponse(BaseModel):
     original_filename: str
     uploaded_at: Optional[str] = None
     uploaded_by: Optional[int] = None
+    uploader: Optional[UploaderInfo] = None
 
 class UserGroupRequest(BaseModel):
     user_id: int
@@ -86,11 +93,42 @@ def api_leave_group(group_id: int, user = Depends(get_current_user)):
     leave_group(user["user_id"], group_id)
     return {"message": "Left group"}
 
+# @router.get("/api/groups/{group_id}/files", response_model=List[FileResponse])
+# def api_get_group_files(group_id: int, user = Depends(get_current_user)):
+#     """Get all files in a group that the current user has access to"""
+#     files = get_group_files(group_id, user["user_id"])
+#     return files
+
+from backend.database import SessionLocal, File, User
+
 @router.get("/api/groups/{group_id}/files", response_model=List[FileResponse])
 def api_get_group_files(group_id: int, user = Depends(get_current_user)):
-    """Get all files in a group that the current user has access to"""
-    files = get_group_files(group_id, user["user_id"])
-    return files
+    """Get all files in a group that the current user has access to, with uploader info"""
+    db = SessionLocal()
+    try:
+        files = get_group_files(group_id, user["user_id"])
+        result = []
+        for f in files:
+            uploader = None
+            if f.get("uploaded_by"):
+                u = db.query(User).filter(User.user_id == f["uploaded_by"]).first()
+                if u:
+                    uploader = {
+                        "user_id": u.user_id,
+                        "username": u.username,
+                        "email": u.email,
+                        "role": u.role
+                    }
+            result.append({
+                "id": f["id"],
+                "original_filename": f["original_filename"],
+                "uploaded_at": f.get("uploaded_at"),
+                "uploaded_by": f.get("uploaded_by"),
+                "uploader": uploader
+            })
+        return result
+    finally:
+        db.close()
 
 @router.post("/api/groups/{group_id}/users")
 def api_add_user_to_group(group_id: int, user_group: UserGroupRequest, user = Depends(get_current_user)):

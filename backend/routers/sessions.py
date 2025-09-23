@@ -129,30 +129,21 @@ def my_sessions(x_user_id: int | None = Query(default=None), x_user_role: str | 
     db = SessionLocal()
     sessions = []
     try:
-        # Determine visibility: admins see all sessions; others see only theirs
-        is_admin = (x_user_role or "").lower() == "admin" or (x_user_id == 0)
-
-        # Start with all or none depending on role
-        base_query = db.query(DBSession)
-
-        # For non-admins, collect sessions they created OR where they uploaded files
+        # Always show only sessions created by the logged-in user, even for admin
         visible_session_ids = set()
-        if is_admin or not x_user_id:
-            # Admin or unknown user -> all sessions
-            for s in base_query.all():
+        if x_user_id:
+        # Sessions created by the user
+            for s in db.query(DBSession).filter(DBSession.created_by == x_user_id).all():
                 visible_session_ids.add(s.id)
-        else:
-            # Sessions created by the user
-            for s in base_query.filter(DBSession.created_by == x_user_id).all():
-                visible_session_ids.add(s.id)
-
             # Sessions where the user uploaded any file
             user_files = db.query(DBFile).filter(DBFile.uploaded_by == x_user_id).all()
             for f in user_files:
-                # file.id is in format "{session_id}_{filename}"
                 sid = f.id.split("_", 1)[0]
                 if sid:
                     visible_session_ids.add(sid)
+        else:
+            # If no user ID, return nothing (or handle as needed)
+            pass
 
         # Build response for the visible sessions
         for sid in visible_session_ids:

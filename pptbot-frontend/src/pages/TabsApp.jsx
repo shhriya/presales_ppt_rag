@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import "../assets/style.css";
 import { uploadFile, askQuestion, listMySessions, deleteSession, getSessionChatHistory } from "../api/api.js";
@@ -7,6 +8,22 @@ import Groups from "../components/Groups.jsx";
 import Chunks from "../components/Chunks";
 import { useAuth } from "../context/AuthContext.jsx";
 import AdminUsers from "./AdminUsers.jsx";
+
+// Helper to convert UTC date string to IST and format
+function toIST(dateString) {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  // Add 5 hours 30 minutes to UTC time
+  const istTime = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+  return istTime.toLocaleString("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  }) + " IST";
+}
 
 export default function TabsApp() {
   const { user } = useAuth(); // get logged-in user
@@ -289,7 +306,11 @@ export default function TabsApp() {
                       }}
                     >
                       <div style={{ fontWeight: 600 }}>{s.name || s.last_file?.original_filename || s.session_id}</div>
-                      <div style={{ fontSize: 12, opacity: 0.8 }}>Updated: {s.last_file?.uploaded_at ? new Date(s.last_file.uploaded_at).toLocaleString() : (s.created_at ? new Date(s.created_at).toLocaleString() : "")}</div>
+                      <div style={{ fontSize: 12, opacity: 0.8 }}>
+                        Updated: {s.last_file?.uploaded_at
+                          ? toIST(s.last_file.uploaded_at)
+                          : (s.created_at ? toIST(s.created_at) : "")}
+                      </div>
                     </button>
                     <button
                       className="btn"

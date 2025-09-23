@@ -1,7 +1,23 @@
+// src/components/Groups.jsx
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
 import { listGroups, getGroupFiles, removeFileFromGroup, createGroup, getGroupUsers, addUserToGroupByEmail, removeUserFromGroup, deleteGroup, BASE_URL } from "../api/api";
+// Helper to convert UTC date string to IST and format
+function toIST(dateString) {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  // Add 5 hours 30 minutes to UTC time
+  const istTime = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+  return istTime.toLocaleString("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  }) + " IST";
+}
 
 export default function Groups() {
   const { user } = useAuth();
@@ -181,14 +197,20 @@ export default function Groups() {
     }
   }
 
-  async function handleViewFile(fileId) {
-    try {
-      // Open file in new tab for inline preview
-      window.open(`${BASE_URL}/api/files/${fileId}`, '_blank');
-    } catch (e) {
-      setError("Failed to open file");
-    }
+async function handleViewFile(fileId, filename) {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  const fileUrl = `${BASE_URL}/api/files/${fileId}`;
+  if ((ext === "docx" || ext === "pptx") && window.location.hostname === "localhost") {
+    alert("Preview not available for DOCX/PPTX on localhost. Please download the file or deploy to a public server to enable online preview.");
+  } else if (ext === "docx" || ext === "pptx") {
+    // Use Office Online Viewer for docx and pptx
+    const officeUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`;
+    window.open(officeUrl, '_blank');
+  } else {
+    // Open directly for images, pdf, etc.
+    window.open(fileUrl, '_blank');
   }
+}
 
   async function handleDownloadFile(fileId, filename) {
     try {
@@ -324,6 +346,7 @@ export default function Groups() {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {groups.map((group) => (
               <div
+                className="my-groups"
                 key={group.group_id}
                 onClick={() => setSelectedGroup(group)}
                 style={{
@@ -331,12 +354,14 @@ export default function Groups() {
                   border: "1px solid rgb(101, 112, 128)",
                   borderRadius: 8,
                   cursor: "pointer",
-                  background: selectedGroup?.group_id === group.group_id ? "#374151" : "transparent",
+                  background: selectedGroup?.group_id === group.group_id ? "#0a225e" : "transparent",
                   transition: "background 0.2s",
                   color: "white" 
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 , color:"#0a225e"}}>
+                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 , 
+                  color: selectedGroup?.group_id === group.group_id ? "white": "#0a225e"
+                  }}>
                   {group.name}
                 </div>
                 {group.description && (
@@ -410,11 +435,13 @@ export default function Groups() {
                           {file.original_filename}
                         </div>
                         <div style={{ fontSize: 13, color: "#94a3b8" }}>
-                          Uploaded: {file.uploaded_at ? new Date(file.uploaded_at).toLocaleDateString() : "Unknown"}
+                          Uploaded: {file.uploaded_at
+                            ? toIST(file.uploaded_at)
+                            : "Unknown"}
                         </div>
                         {file.uploader && (
                           <div style={{ fontSize: 12, color: "#6b7280" }}>
-                            By: {file.uploader.username} ({file.uploader.email})
+                            By: {file.uploader.username} ({file.uploader.email}, {file.uploader.role})
                           </div>
                         )}
                       </div>
@@ -422,7 +449,7 @@ export default function Groups() {
                     <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                       <button
                         className="btn"
-                        onClick={() => handleViewFile(file.id)}
+                        onClick={() => handleViewFile(file.id, file.original_filename)}
                         style={baseBtnStyle}
                         {...interactiveButtonProps("#3b82f6", "#1e40af")}
                         title="View File"

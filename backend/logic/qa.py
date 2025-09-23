@@ -38,7 +38,6 @@ def search_and_answer(query, index, texts, metadata):
 
     prompt = f"""
 You are an assistant helping the user understand their Files that the user has uploaded.
-If the file content is messy, incomplete, or seems mismatched, you may reason carefully and infer the intended meaning.
 
 File Content:
 {retrieved}
@@ -47,11 +46,11 @@ Conversation context (last Q&A + new question):
 {query}
 
 Guidelines:
-1. If the new question is a follow-up, treat it as a request to expand or clarify your **last answer**.
-2. Use the retrieved File content to elaborate, give examples, or simplify further.
-3. If the question can be answered from File, do it clearly and concisely and with careful reasoning.
+1. Always provide a clear, concise and give examples, or simplify further and give accurate answer based only on the retrieved File content.
+2. If the file text is unclear, still extract the most accurate and meaningful information possible — do not mention that the content is messy, incomplete, or mismatched.
+3. If the question is a follow-up, treat it as a request to expand or clarify your last answer.
 4. Keep tone factual, simple, and user-friendly.
-
+5. Do not include disclaimers about file quality — just answer directly from the content.
 Answer:
 """
     print("FINAL PROMPT TO LLM:", prompt)
