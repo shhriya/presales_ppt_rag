@@ -8,6 +8,7 @@ import Groups from "../components/Groups.jsx";
 import Chunks from "../components/Chunks";
 import { useAuth } from "../context/AuthContext.jsx";
 import AdminUsers from "./AdminUsers.jsx";
+import { useExtraction } from "../context/ExtractionContext";
 
 // Helper to convert UTC date string to IST and format
 function toIST(dateString) {
@@ -40,6 +41,7 @@ export default function TabsApp() {
   const [activeTab, setActiveTab] = useState("chat"); // chat, groups, chunks, admin
   const [sessions, setSessions] = useState([]);
   const [sessionMessages, setSessionMessages] = useState({}); // sessionId -> messages array
+  const { extracting, setExtracting } = useExtraction();
 
   // Initialize tab from URL (?tab=groups/admin/...) and keep URL updated
   useEffect(() => {
@@ -198,6 +200,7 @@ export default function TabsApp() {
       return;
     }
     setError(""); setIsIndexing(true);
+    setExtracting(true);
     try {
       const res = await uploadFile(file, user, sessionId);
       const newSessionId = res.session_id;
@@ -210,6 +213,7 @@ export default function TabsApp() {
       setError(e.message || "Upload failed.");
     } finally {
       setIsIndexing(false);
+      setExtracting(false);
     }
   }
 
@@ -262,7 +266,7 @@ export default function TabsApp() {
       {/* Tabs */}
       <div className="tabs" >
         {tabsToShow.includes("chat") && (
-          <button className={`tab-btn ${activeTab === "chat" ? "active" : ""}`} onClick={() => setActiveTabAndUrl("chat")}>Chat</button>
+          <button className={`tab-btn ${activeTab === "chat" ? "active" : ""}`} onClick={() => !extracting && setActiveTabAndUrl("chat")} disabled={extracting}>Chat</button>
         )}
         {tabsToShow.includes("groups") && (
           <button className={`tab-btn ${activeTab === "groups" ? "active" : ""}`} onClick={() => setActiveTabAndUrl("groups")}>Groups</button>

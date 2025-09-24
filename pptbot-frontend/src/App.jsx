@@ -5,6 +5,7 @@ import ChunksView from "./pages/ChunksView.jsx";
 import FileViewer from "./pages/FileViewer.jsx";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import LogoutPage from "./context/LogoutPage.jsx";
+import ExtractionOverlay from "./components/ExtractionOverlay";
 // ProtectedRoute wrapper
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth();
@@ -14,6 +15,7 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <AuthProvider>
+      <ExtractionOverlay />
       <Router>
         <Routes>
           {/* Login page */}

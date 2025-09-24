@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
+// import { ExtractionProvider } from "../context/ExtractionContext";
+import { useExtraction } from "../context/ExtractionContext"; // import the hook
 import { listGroups, getGroupFiles, removeFileFromGroup, createGroup, getGroupUsers, addUserToGroupByEmail, removeUserFromGroup, deleteGroup, BASE_URL } from "../api/api";
 // Helper to convert UTC date string to IST and format
 function toIST(dateString) {
@@ -21,6 +23,7 @@ function toIST(dateString) {
 
 export default function Groups() {
   const { user } = useAuth();
+  const { setExtracting } = useExtraction();
   const isAdmin = (user?.role || "").toLowerCase() === "admin";
   const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
@@ -151,6 +154,7 @@ export default function Groups() {
     try {
       setError("");
       setUploadingFile(true);
+      setExtracting(true); // Block navigation and show overlay
 
       // Create FormData for file upload
       const formData = new FormData();
@@ -180,20 +184,22 @@ export default function Groups() {
       }
 
       const uploadResult = await uploadResponse.json();
-      
-             // File is automatically added to the group by the backend
-      
+      // File is automatically added to the group by the backend
+
+      // Optionally, poll backend for extraction status here if needed
+
       // Refresh the group files
       await loadGroupFiles(selectedGroup.group_id);
-      
+
       // Reset form
       setSelectedFile(null);
       setShowUploadFile(false);
-      
+
     } catch (e) {
       setError(e.message || "Failed to upload file");
     } finally {
       setUploadingFile(false);
+      setExtracting(false); // Unblock navigation and hide overlay
     }
   }
 
