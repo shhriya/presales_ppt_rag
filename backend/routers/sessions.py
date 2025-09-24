@@ -6,9 +6,9 @@ from backend.config import SESSIONS_DIR
 from backend.database import SessionLocal, Session as DBSession, File as DBFile, User, load_chat_history
 import os
 import shutil
-
+import logging
 router = APIRouter()
-
+ 
 # -----------------------------
 # List all sessions
 # -----------------------------
@@ -17,7 +17,7 @@ def list_sessions():
     sessions = []
     ignore_exts = {".json", ".index"}
     ignore_files = {"slides.json", "chunks.json"}
-
+ 
     for sid in os.listdir(SESSIONS_DIR):
         session_path = os.path.join(SESSIONS_DIR, sid)
         if not os.path.isdir(session_path):
@@ -28,10 +28,10 @@ def list_sessions():
             if os.path.splitext(f)[1].lower() not in ignore_exts and f not in ignore_files
         ]
         sessions.append({"session_id": sid, "files": user_files})
-
+ 
     return {"sessions": sessions}
-
-
+ 
+ 
 # -----------------------------
 # List files for one session
 # -----------------------------
@@ -40,19 +40,19 @@ def list_files(session_id: str):
     session_path = os.path.join(SESSIONS_DIR, session_id)
     if not os.path.exists(session_path):
         raise HTTPException(status_code=404, detail="Session not found")
-
+ 
     all_files = os.listdir(session_path)
     ignore_exts = {".json", ".index"}
     ignore_files = {"slides.json", "chunks.json"}
-
+ 
     user_files = [
         f for f in all_files
         if os.path.splitext(f)[1].lower() not in ignore_exts and f not in ignore_files
     ]
-
+ 
     return {"files": user_files}
-
-
+ 
+ 
 # -----------------------------
 # Session details
 # -----------------------------
@@ -61,28 +61,28 @@ def session_details(session_id: str):
     session_path = os.path.join(SESSIONS_DIR, session_id)
     if not os.path.exists(session_path):
         raise HTTPException(status_code=404, detail="Session not found")
-
+ 
     slides_json_path = os.path.join(session_path, "slides.json")
     if not os.path.exists(slides_json_path):
         raise HTTPException(status_code=404, detail="No extracted data")
-
+ 
     with open(slides_json_path, "r", encoding="utf-8") as f:
         slides_data = json.load(f)
-
+ 
     ignore_exts = {".json", ".index"}
     ignore_files = {"slides.json", "chunks.json"}
     user_files = [
         f for f in os.listdir(session_path)
         if os.path.splitext(f)[1].lower() not in ignore_exts and f not in ignore_files
     ]
-
+ 
     return {
         "session_id": session_id,
         "items_count": len(slides_data),
         "files": user_files
     }
-
-
+ 
+ 
 # -----------------------------
 # Get slides for a file
 # -----------------------------
@@ -90,16 +90,16 @@ def session_details(session_id: str):
 async def get_slides(session_id: str):
     session_path = os.path.join(SESSIONS_DIR, session_id)
     slides_json_path = os.path.join(session_path, "slides.json")
-
+ 
     if not os.path.exists(slides_json_path):
         raise HTTPException(status_code=404, detail="Slides not found for this file")
-
+ 
     with open(slides_json_path, "r", encoding="utf-8") as f:
         slides_data = json.load(f)
-
+ 
     return {"session_id": session_id, "slides": slides_data}
-
-
+ 
+ 
 # -----------------------------
 # Get chunks
 # -----------------------------
@@ -107,20 +107,20 @@ async def get_slides(session_id: str):
 def get_chunks(session_id: str = Query(...)):
     session_path = os.path.join(SESSIONS_DIR, session_id)
     chunks_path = os.path.join(session_path, "chunks.json")
-
+ 
     if not os.path.exists(chunks_path):
         # raise HTTPException(status_code=404, detail="Chunks not found")
         return {"session_id": session_id, "chunks":[]}
     with open(chunks_path, "r", encoding="utf-8") as f:
         raw = json.load(f)
-
+ 
     # Only return the actual texts as chunks
     texts = raw.get("texts", [])
     chunks = [{"content": t} for t in texts]
-
+ 
     return {"session_id": session_id, "chunks": chunks}
-
-
+ 
+ 
 # -----------------------------
 # List my sessions with summary
 # -----------------------------
@@ -144,7 +144,7 @@ def my_sessions(x_user_id: int | None = Query(default=None), x_user_role: str | 
         else:
             # If no user ID, return nothing (or handle as needed)
             pass
-
+ 
         # Build response for the visible sessions
         for sid in visible_session_ids:
             s = db.query(DBSession).filter(DBSession.id == sid).first()
@@ -174,7 +174,7 @@ def my_sessions(x_user_id: int | None = Query(default=None), x_user_role: str | 
     finally:
         db.close()
     return {"sessions": sessions}
-
+ 
 @router.get("/api/sessions/{session_id}/chat-history")
 def get_session_chat_history(session_id: str, x_user_id: int | None = Query(default=None)):
     """Get chat history for a specific session."""
@@ -184,18 +184,18 @@ def get_session_chat_history(session_id: str, x_user_id: int | None = Query(defa
         session = db.query(DBSession).filter(DBSession.id == session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
-        
+       
         # Check if user owns the session (if user_id provided)
         if x_user_id and session.created_by != x_user_id:
             raise HTTPException(status_code=403, detail="Not authorized to access this session")
-        
+       
         # Load chat history
         chat_history = load_chat_history(session_id)
         return {"session_id": session_id, "messages": chat_history}
     finally:
         db.close()
-
-
+ 
+ 
 # -----------------------------
 # Delete a session
 # -----------------------------
@@ -207,23 +207,30 @@ def delete_session(session_id: str, x_user_id: int | None = Query(default=None))
         session = db.query(DBSession).filter(DBSession.id == session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
-        
+       
         # Check if user owns the session (if user_id provided)
         if x_user_id and session.created_by != x_user_id:
             raise HTTPException(status_code=403, detail="Not authorized to delete this session")
-        
+       
         # Delete session directory
         session_dir = os.path.join(SESSIONS_DIR, session_id)
         if os.path.exists(session_dir):
             shutil.rmtree(session_dir)
-        
+       
         # Delete from database
         db.delete(session)
         db.commit()
-        
+       
         return {"message": "Session deleted successfully"}
+    except HTTPException as he:
+        db.rollback()
+        logging.error(f"HTTPException deleting session {session_id}: {he.detail}")
+        raise he
     except Exception as e:
         db.rollback()
+        logging.error(f"Unexpected error deleting session {session_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
+ 
+ 
