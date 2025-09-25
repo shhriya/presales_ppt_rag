@@ -243,14 +243,14 @@ async function handleViewFile(fileId, filename) {
   function getFileIcon(filename) {
     const ext = filename.split('.').pop()?.toLowerCase();
     switch (ext) {
-      case 'pdf': return '📄';
-      case 'pptx': case 'ppt': return '📊';
-      case 'docx': case 'doc': return '📝';
-      case 'txt': return '📄';
-      case 'jpg': case 'jpeg': case 'png': case 'gif': return '🖼️';
-      case 'mp4': case 'avi': case 'mov': return '🎥';
-      case 'mp3': case 'wav': return '🎵';
-      default: return '📎';
+      case 'pdf': return '';
+      case 'pptx': case 'ppt': return '';
+      case 'docx': case 'doc': return '';
+      case 'txt': return '';
+      case 'jpg': case 'jpeg': case 'png': case 'gif': return '';
+      case 'mp4': case 'avi': case 'mov': return '';
+      case 'mp3': case 'wav': return '';
+      default: return '';
     }
   }
 
@@ -335,7 +335,7 @@ async function handleViewFile(fileId, filename) {
               {...interactiveButtonProps("#3b82f6", "#1e40af")}
               title="Create Group"
             >
-              ➕
+              <i class="bi bi-plus-lg"></i>
             </button>
           )}
         </div>
@@ -397,20 +397,20 @@ async function handleViewFile(fileId, filename) {
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn" onClick={() => setShowUploadFile(true)} style={baseBtnStyle} {...interactiveButtonProps("#10b981", "#065f46")} title="Upload File">
-                  📤
+                  <i class="bi bi-cloud-arrow-up"></i>
                 </button>
                 {isAdmin && (
                   <>
                     <button className="btn" onClick={() => setShowManageUsers(true)} style={baseBtnStyle} {...interactiveButtonProps("rgb(107, 106, 106)", "rgb(155, 155, 155)")} title="Manage Users">
-                      👥
+                      <i class="bi bi-people-fill"></i>
                     </button>
                     <button className="btn" onClick={async () => { if (window.confirm(`Delete group \"${selectedGroup.name}\"? This cannot be undone.`)) { try { await deleteGroup(selectedGroup.group_id); await loadGroups(); setSelectedGroup(null); } catch (e) { setError(e.message); } } }} style={baseBtnStyle} {...interactiveButtonProps("#ef4444", "#b91c1c")} title="Delete Group">
-                      🗑️
+                      <i className="bi bi-trash3"></i>
                     </button>
                   </>
                 )}
                 <button className="btn" onClick={() => loadGroupFiles(selectedGroup.group_id)} style={baseBtnStyle} {...interactiveButtonProps("#334155", "#1f2937")} title="Refresh">
-                  🔄
+                  <i class="bi bi-arrow-clockwise"></i>
                 </button>
               </div>
             </div>
@@ -460,7 +460,7 @@ async function handleViewFile(fileId, filename) {
                         {...interactiveButtonProps("#3b82f6", "#1e40af")}
                         title="View File"
                       >
-                        👁️
+                        <i class="bi bi-eye"></i>
                       </button>
                       <button
                         className="btn"
@@ -469,7 +469,7 @@ async function handleViewFile(fileId, filename) {
                         {...interactiveButtonProps("#10b981", "#065f46")}
                         title="Download File"
                       >
-                        ⬇️
+                        <i class="bi bi-download"></i>
                       </button>
                       {/* Only show remove button if user is admin or uploaded the file */}
                       {(isAdmin || (file.uploaded_by && file.uploaded_by === user?.user_id)) && (
@@ -480,7 +480,7 @@ async function handleViewFile(fileId, filename) {
                           {...interactiveButtonProps("#ef4444", "#b91c1c")}
                           title="Remove File"
                         >
-                          ❌
+                          <i className="bi bi-trash3"></i>
                         </button>
                       )}
                     </div>
@@ -575,7 +575,7 @@ async function handleViewFile(fileId, filename) {
                 style={{ background: "#6b7280" }}
                 title="Cancel"
               >
-                ❌
+                <i class="bi bi-x"></i>
               </button>
               <button
                 className="btn"
@@ -583,7 +583,7 @@ async function handleViewFile(fileId, filename) {
                 style={{ background: "#3b82f6", color: "white" }}
                 title="Create Group"
               >
-                ✅
+                <i class="bi bi-check2"></i>
               </button>
             </div>
           </div>
@@ -661,7 +661,7 @@ async function handleViewFile(fileId, filename) {
                 disabled={uploadingFile}
                 title="Cancel"
               >
-                ❌
+                <i class="bi bi-x-lg"></i>
               </button>
               <button
                 className="btn"
@@ -670,7 +670,7 @@ async function handleViewFile(fileId, filename) {
                 disabled={!selectedFile || uploadingFile}
                 title={uploadingFile ? "Uploading..." : "Upload & Add to Group"}
               >
-                {uploadingFile ? "⏳" : "📤"}
+                {uploadingFile ? <i class="bi bi-hourglass-split"></i> : <i class="bi bi-cloud-upload"></i>}
               </button>
             </div>
           </div>
@@ -731,10 +731,10 @@ async function handleViewFile(fileId, filename) {
                 <button
                   className="btn"
                   onClick={handleAddUserToGroup}
-                  style={{ background: "#10b981", color: "white", flex: "1 1 140px" }}
+                  style={{ background: "#10b981", color: "white", flex: "1 10px" }}
                   title="Add User"
                 >
-                  ➕
+                  <i class="bi bi-person-add"></i>
                 </button>
               </div>
               {missingUserEmail && (
@@ -831,7 +831,7 @@ async function handleViewFile(fileId, filename) {
                         style={{ background: "#ef4444", color: "white", flex: "0 0 auto" }}
                         title="Remove User"
                       >
-                        ❌
+                        <i className="bi bi-trash3"></i>
                       </button>
                     </div>
                   ))}

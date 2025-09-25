@@ -40,7 +40,7 @@ export default function UserMenu() {
   return (
     <div style={{ position: "relative" }}>
       <button className="btn" onClick={() => setOpen(o => !o)} title="Profile" style={{ background: "#374151", color: "white" }}>
-        👤
+        <i class="bi bi-person-lines-fill"></i>
       </button>
       {open && (
         <div style={{ position: "absolute", right: 0, top: "110%", background: "#1f2937", border: "1px solid #374151", borderRadius: 8, padding: 12, minWidth: 260, zIndex: 1000 }}>

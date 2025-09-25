@@ -326,7 +326,7 @@ export default function TabsApp() {
                       }}
                       title="Delete session"
                     >
-                      🗑️
+                      <i className="bi bi-trash3"></i>
                     </button>
                   </div>
                 ))}
