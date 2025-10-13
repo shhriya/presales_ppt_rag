@@ -1,4 +1,4 @@
-
+ 
 import { useState, useEffect } from "react";
 import "../assets/style.css";
 import { uploadFile, askQuestion, listMySessions, deleteSession, getSessionChatHistory } from "../api/api.js";
@@ -9,7 +9,7 @@ import Chunks from "../components/Chunks";
 import { useAuth } from "../context/AuthContext.jsx";
 import AdminUsers from "./AdminUsers.jsx";
 import { useExtraction } from "../context/ExtractionContext";
-
+ 
 // Helper to convert UTC date string to IST and format
 function toIST(dateString) {
   if (!dateString) return "";
@@ -25,11 +25,11 @@ function toIST(dateString) {
     second: "2-digit"
   }) + " IST";
 }
-
+ 
 export default function TabsApp() {
   const { user } = useAuth(); // get logged-in user
   const userRole = user?.role; // role must be set on login
-
+ 
   const [sessionId, setSessionId] = useState(null);
   const [slides, setSlides] = useState(0);
   const [currentFilename, setCurrentFilename] = useState("");
@@ -42,7 +42,7 @@ export default function TabsApp() {
   const [sessions, setSessions] = useState([]);
   const [sessionMessages, setSessionMessages] = useState({}); // sessionId -> messages array
   const { extracting, setExtracting } = useExtraction();
-
+ 
   // Initialize tab from URL (?tab=groups/admin/...) and keep URL updated
   useEffect(() => {
     try {
@@ -54,7 +54,7 @@ export default function TabsApp() {
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
+ 
   function setActiveTabAndUrl(tab) {
     setActiveTab(tab);
     try {
@@ -63,7 +63,7 @@ export default function TabsApp() {
       window.history.replaceState({}, "", url);
     } catch {}
   }
-
+ 
   // Restore chat state from localStorage on mount
   useEffect(() => {
     try {
@@ -75,7 +75,7 @@ export default function TabsApp() {
       if (savedSessionMessages) setSessionMessages(JSON.parse(savedSessionMessages));
     } catch {}
   }, []);
-
+ 
   // Load chat history from database when session changes
   useEffect(() => {
     if (sessionId && user?.user_id) {
@@ -99,7 +99,7 @@ export default function TabsApp() {
       setMessages([]);
     }
   }, [sessionId, user?.user_id]);
-
+ 
   // Persist chat state to localStorage
   useEffect(() => {
     try { sessionId ? localStorage.setItem("chat_session_id", sessionId) : localStorage.removeItem("chat_session_id"); } catch {}
@@ -110,7 +110,7 @@ export default function TabsApp() {
   useEffect(() => {
     try { localStorage.setItem("chat_session_messages", JSON.stringify(sessionMessages || {})); } catch {}
   }, [sessionMessages]);
-
+ 
   // Update current messages when session changes
   useEffect(() => {
     if (sessionId) {
@@ -119,7 +119,7 @@ export default function TabsApp() {
       setMessages([]);
     }
   }, [sessionId, sessionMessages]);
-
+ 
   // Load my sessions list
   const refreshSessions = async () => {
     try {
@@ -128,11 +128,11 @@ export default function TabsApp() {
       setSessions(res.sessions || []);
     } catch {}
   };
-
+ 
   useEffect(() => {
     refreshSessions();
   }, [user]);
-
+ 
   // Create new session
   function createNewSession() {
     setSessionId(null);
@@ -143,7 +143,7 @@ export default function TabsApp() {
     // Refresh sessions list to show updated state
     refreshSessions();
   }
-
+ 
   // Delete session
   async function handleDeleteSession(sessionIdToDelete) {
     if (!window.confirm("Are you sure you want to delete this session? This will remove all chat history and files.")) {
@@ -167,13 +167,13 @@ export default function TabsApp() {
       setError(e.message || "Failed to delete session");
     }
   }
-
+ 
   // Switch to a session
   async function switchToSession(session) {
     setSessionId(session.session_id);
     setCurrentFilename(session.last_file?.original_filename || "");
     try { localStorage.setItem("chat_session_id", session.session_id); } catch {}
-    
+   
     // Load chat history from database
     if (user?.user_id) {
       try {
@@ -193,7 +193,7 @@ export default function TabsApp() {
       setMessages(localMessages);
     }
   }
-
+ 
   async function handleUpload() {
     if (!file) {
       setError("Please choose a file.");
@@ -216,18 +216,21 @@ export default function TabsApp() {
       setExtracting(false);
     }
   }
-
+ 
   async function handleSend(question) {
-    if (!sessionId) { 
-      setError("Please upload a file first to start a session."); 
-      return; 
+    if (!sessionId) {
+      setError("Please upload a file first to start a session.");
+      return;
     }
     setError("");
     const next = [...messages, { role: "user", content: question }];
     setMessages(next); setIsAsking(true);
     try {
       const res = await askQuestion(sessionId, question);
-      const finalMessages = [...next, { role: "assistant", content: res.answer }];
+      const answer = res.answer;
+      const references = res.references || [];
+      // Append answer with references
+      const finalMessages = [...next, { role: "assistant", content: answer , references }];
       setMessages(finalMessages);
       // Update session messages
       setSessionMessages(prev => ({ ...prev, [sessionId]: finalMessages }));
@@ -239,16 +242,16 @@ export default function TabsApp() {
       setIsAsking(false);
     }
   }
-
+ 
   const visibleTabs = {
     admin: ["chat", "groups", "chunks", "admin"],
     developer: ["chat", "groups", "chunks"],
     employee: ["chat", "groups"],
     client: ["chat", "groups"]
   };
-
+ 
   const tabsToShow = visibleTabs[userRole] || ["chat"];
-
+ 
   return (
     <div className="app">
       <div className="header">
@@ -261,8 +264,8 @@ export default function TabsApp() {
           <button className="btn" onClick={() => window.location.href = "/logout"}>Logout</button>
         </div>
       </div>
-
-
+ 
+ 
       {/* Tabs */}
       <div className="tabs" >
         {tabsToShow.includes("chat") && (
@@ -278,7 +281,7 @@ export default function TabsApp() {
           <button className={`tab-btn ${activeTab === "admin" ? "active" : ""}`} onClick={() => setActiveTabAndUrl("admin")}>Admin</button>
         )}
       </div>
-
+ 
       {/* Panels */}
       {activeTab === "chat" && tabsToShow.includes("chat") && (
         <div className="chat-layout">
@@ -286,8 +289,8 @@ export default function TabsApp() {
             <div className="panel" style={{ padding: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={{ fontWeight: 600 }}>My Sessions</div>
-                <button 
-                  className="btn" 
+                <button
+                  className="btn"
                   onClick={createNewSession}
                   style={{ padding: "6px 10px", fontSize: 12 }}
                 >
@@ -300,10 +303,10 @@ export default function TabsApp() {
                     <button
                       className="btn"
                       onClick={() => switchToSession(s)}
-                      style={{ 
-                        flex: 1, 
-                        textAlign: "left", 
-                        background: s.session_id === sessionId ? "var(--primary)" : "#fff", 
+                      style={{
+                        flex: 1,
+                        textAlign: "left",
+                        background: s.session_id === sessionId ? "var(--primary)" : "#fff",
                         color: s.session_id === sessionId ? "#fff" : "var(--text)",
                         border: s.session_id === sessionId ? "1px solid var(--primary)" : "1px solid var(--border)",
                         padding: "8px"
@@ -319,9 +322,9 @@ export default function TabsApp() {
                     <button
                       className="btn"
                       onClick={() => handleDeleteSession(s.session_id)}
-                      style={{ 
-                        padding: "6px 8px", 
-                        fontSize: 12, 
+                      style={{
+                        padding: "6px 8px",
+                        fontSize: 12,
                         minWidth: "auto"
                       }}
                       title="Delete session"
@@ -338,7 +341,7 @@ export default function TabsApp() {
               </div>
             </div>
           </div>
-
+ 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="panel" style={{ marginBottom: 12 }}>
               <div className="uploader">
@@ -356,7 +359,7 @@ export default function TabsApp() {
                 {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
               </div>
             </div>
-
+ 
             <div className="panel">
               <Chat
                 messages={messages}
@@ -368,19 +371,19 @@ export default function TabsApp() {
           </div>
         </div>
       )}
-
+ 
       {activeTab === "groups" && tabsToShow.includes("groups") && (
         <div className="panel">
           <Groups />
         </div>
       )}
-
+ 
       {activeTab === "chunks" && tabsToShow.includes("chunks") && (
         <div className="panel">
           <Chunks />
         </div>
       )}
-
+ 
       {activeTab === "admin" && tabsToShow.includes("admin") && (
         <div className="panel">
           <AdminUsers />
@@ -389,3 +392,5 @@ export default function TabsApp() {
     </div>
   );
 }
+ 
+ 

@@ -20,3 +20,4 @@ cryptography
 # google-generativeai (removed; switched to OpenAI)
 comtypes; platform_system == "Windows"
 pywin32; platform_system == "Windows"
+tiktoken==0.7.0

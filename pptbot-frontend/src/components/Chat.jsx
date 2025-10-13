@@ -1,18 +1,18 @@
 // // chat.jsx
 import { useEffect, useRef, useState } from "react";
 import MessageBubble from "./MessageBubble";
-
+ 
 export default function Chat({ messages, disabled, onSend, isAsking }) {
   const [input, setInput] = useState("");
   const listRef = useRef(null);
-
+ 
   useEffect(() => {
     listRef.current?.scrollTo({
       top: listRef.current.scrollHeight,
       behavior: "smooth",
     });
   }, [messages]);
-
+ 
   function handleSend() {
     const val = input.trim();
     if (!val) return;
@@ -20,20 +20,20 @@ export default function Chat({ messages, disabled, onSend, isAsking }) {
     onSend(val);
     setInput(""); // clear
   }
-
+ 
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault(); // stop form from submitting early
       handleSend();
     }
   }
-
+ 
   return (
     <div className="chat-container">
       {/* scrollable chat area */}
       <div className="chat-list" ref={listRef}>
         {messages.map((m, i) => (
-          <MessageBubble key={i} role={m.role} content={m.content} />
+          <MessageBubble key={i} role={m.role} content={m.content} references={m.references} />
         ))}
         {isAsking && (
           <div
@@ -81,7 +81,7 @@ export default function Chat({ messages, disabled, onSend, isAsking }) {
           </div>
         )}
       </div>
-
+ 
       {/* input fixed at bottom */}
       <div className="chat-input">
         <input
@@ -95,7 +95,7 @@ export default function Chat({ messages, disabled, onSend, isAsking }) {
           disabled={disabled}
           style={{ flex: 1, minWidth: 0 }}
         />
-
+ 
         <button type="button" onClick={handleSend} disabled={disabled}>
           Send
         </button>
@@ -103,3 +103,4 @@ export default function Chat({ messages, disabled, onSend, isAsking }) {
     </div>
   );
 }
+ 
