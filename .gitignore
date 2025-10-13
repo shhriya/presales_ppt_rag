@@ -38,9 +38,7 @@ build/
 # OS
 .DS_Store
 Thumbs.db
-
-venv/
-backend/venv/
+.venv/
 *.pyd
 *.dll
 *.lib
