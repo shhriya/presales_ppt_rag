@@ -23,7 +23,7 @@ export default function LoginPage() {
       navigate("/");
     } catch (err) {
       console.error("Login failed:", err);
-      const message = err?.message || "Invalid credentials. Please try again.";
+      const message = err?.message || "Login failed. Please try again.";
       setError(message);
     } finally {
       setIsSubmitting(false);
@@ -51,7 +51,9 @@ export default function LoginPage() {
           color: "#fff",
         }}
       >
-        <h2 style={{ textAlign: "center", marginBottom: "24px", fontWeight: 600 }}>Login</h2>
+        <h2 style={{ textAlign: "center", marginBottom: "24px", fontWeight: 600 }}>
+          Login
+        </h2>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <input
@@ -107,10 +109,6 @@ export default function LoginPage() {
         </form>
 
         {error && <div style={{ color: "#f87171", textAlign: "center", marginTop: 12 }}>{error}</div>}
-
-        <div style={{ textAlign: "center", marginTop: "16px", fontSize: "14px", color: "#94a3b8" }}>
-          Don't have an account? <span style={{ color: "#3b82f6", cursor: "pointer" }}>Contact Admin</span>
-        </div>
       </div>
     </div>
   );

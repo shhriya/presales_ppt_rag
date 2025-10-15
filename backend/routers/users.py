@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from typing import List, Optional
 from backend.database import SessionLocal, User, UserGroup, File, FileGroup, Group, Session
@@ -24,7 +24,13 @@ class UserOut(BaseModel):
     role: str
 
 @router.get("/api/users", response_model=List[UserOut])
-def list_users():
+def list_users(x_user_id: int | None = Header(default=None, alias="X-User-Id"),
+               x_user_role: str | None = Header(default=None, alias="X-User-Role")):
+    # Check if user is admin
+    if x_user_role != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     db = SessionLocal()
     users = db.query(User).all()
     out = [{
@@ -37,7 +43,14 @@ def list_users():
     return out
 
 @router.post("/api/users", response_model=UserOut)
-def create_user(data: UserCreate):
+def create_user(data: UserCreate,
+                x_user_id: int | None = Header(default=None, alias="X-User-Id"),
+                x_user_role: str | None = Header(default=None, alias="X-User-Role")):
+    # Check if user is admin
+    if x_user_role != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     db = SessionLocal()
     existing = db.query(User).filter(User.email == data.email).first()
     if existing:
@@ -98,7 +111,14 @@ def change_password(user_id: int, data: PasswordChange):
     return {"message": "Password updated"}
 
 @router.delete("/api/users/{user_id}")
-def delete_user(user_id: int):
+def delete_user(user_id: int,
+                x_user_id: int | None = Header(default=None, alias="X-User-Id"),
+                x_user_role: str | None = Header(default=None, alias="X-User-Role")):
+    # Check if user is admin
+    if x_user_role != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     db = SessionLocal()
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:

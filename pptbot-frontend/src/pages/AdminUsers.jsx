@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { listUsers, createUser, deleteUser } from "../api/api";
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
@@ -11,26 +12,10 @@ export default function AdminUsers() {
   });
   const [showPwd, setShowPwd] = useState(false);
 
-  async function api(path, opts = {}) {
-    const base = "http://localhost:9000";
-    const headers = opts.headers || {};
-    const raw = localStorage.getItem("user");
-    if (raw) {
-      try {
-        const u = JSON.parse(raw);
-        if (u?.user_id) headers["X-User-Id"] = String(u.user_id);
-        if (u?.role) headers["X-User-Role"] = String(u.role);
-      } catch {}
-    }
-    const res = await fetch(base + path, { ...opts, headers });
-    if (!res.ok) throw new Error((await res.json()).detail || "Request failed");
-    return res.json();
-  }
-
   async function load() {
     try {
       setError("");
-      const data = await api("/api/users");
+      const data = await listUsers();
       setUsers(data);
     } catch (e) {
       setError(e.message);
@@ -43,11 +28,7 @@ export default function AdminUsers() {
 
   async function handleCreate() {
     try {
-      await api("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+      await createUser(form.username, form.email, form.password, form.role);
       setForm({ username: "", email: "", password: "", role: "employee" });
       await load();
     } catch (e) {
@@ -58,7 +39,7 @@ export default function AdminUsers() {
   async function handleDelete(id) {
     if (!window.confirm("Delete this user?")) return;
     try {
-      await api(`/api/users/${id}`, { method: "DELETE" });
+      await deleteUser(id);
       await load();
     } catch (e) {
       setError(e.message);

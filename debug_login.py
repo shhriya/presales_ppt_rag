@@ -63,7 +63,7 @@ def test_login_endpoint():
             print(f"\n📝 Testing login with: {creds['email']}")
             
             response = requests.post(
-                "http://localhost:9000/login",
+                "http://localhost:8000/login",
                 json=creds,
                 headers={"Content-Type": "application/json"}
             )

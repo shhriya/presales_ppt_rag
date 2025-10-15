@@ -13,7 +13,30 @@ router = APIRouter()
  
 @router.post("/ask")
 async def ask(body: AskBody):
+    # Check if session exists in memory first
     s = SESSIONS.get(body.session_id)
+
+    # If not in memory, check database and load from disk
+    if not s:
+        db = SessionLocal()
+        try:
+            # Check if session exists in database
+            db_session = db.query(DBSession).filter(DBSession.id == body.session_id).first()
+            if not db_session:
+                raise HTTPException(status_code=404, detail="Invalid session_id. Upload a file first.")
+
+            # Load session data from disk
+            index, texts, metadata = load_session_data(body.session_id)
+            if not index or not texts:
+                raise HTTPException(status_code=404, detail="Session data not found. Upload a file first.")
+
+            # Store in memory for this request
+            s = {"index": index, "texts": texts, "metadata": metadata}
+            SESSIONS[body.session_id] = s
+
+        finally:
+            db.close()
+
     if not s:
         raise HTTPException(status_code=404, detail="Invalid session_id. Upload a file first.")
  
@@ -38,40 +61,18 @@ Previous exchanges:
 New question: {body.question}
 """ if context_parts else body.question
  
-    # Ensure index and texts exist; if not, try to restore from disk
-    if not s.get("index") or not s.get("texts"):
-        try:
-            session_path = os.path.join(SESSIONS_DIR, body.session_id)
-            slides_json_path = os.path.join(session_path, "slides.json")
-            chunks_json_path = os.path.join(session_path, "chunks.json")
-            index_path = os.path.join(session_path, "faiss.index")
- 
-            slides_data = []
-            if os.path.exists(slides_json_path):
-                with open(slides_json_path, "r", encoding="utf-8") as f:
-                    slides_data = json.load(f)
- 
-            text_slides = [slide for slide in slides_data if slide.get("full_text")]
-            if text_slides:
-                index, texts, metadata = build_faiss_index(text_slides, index_path, chunks_json_path)
-                s["index"], s["texts"], s["metadata"] = index, texts, metadata
-            else:
-                return {"answer": "Sorry, I don't have data to answer that yet. Upload a file with text content."}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to restore index: {e}")
- 
     try:
         answer_data = search_and_answer(context_query, s["index"], s["texts"], s["metadata"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Answering failed: {e}")
- 
+
     # Add new messages to chat history
     new_messages = [
         {"role": "user", "content": body.question},
         {"role": "assistant", "content": answer_data.get("text", "")}
     ]
     updated_history = chat_history + new_messages
- 
+
    
     # Save updated chat history to database
     save_chat_history(body.session_id, updated_history)
@@ -79,8 +80,5 @@ New question: {body.question}
     # Update in-memory session for backward compatibility
     s["last_q"] = body.question
     s["last_a"] = answer_data.get("text", "")
- 
+
     return {"answer": answer_data.get("text", ""), "references": answer_data.get("references", [])}
- 
- 
- 

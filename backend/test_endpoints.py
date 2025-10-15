@@ -6,7 +6,7 @@ Test script to verify endpoints are working correctly.
 import requests
 import json
 
-BASE_URL = "http://localhost:9000"
+BASE_URL = "http://localhost:8000"
 
 def test_endpoints():
     """Test key endpoints to ensure they're working."""

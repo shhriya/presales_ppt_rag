@@ -1,53 +1,85 @@
-# backend/logic/faiss_index.py
+# backend\logic\faiss_index.py - ref logic for pptx and pdf
 import json
 import numpy as np
 import faiss
-from .chunking import chunk_text
-from .config import client
 import os
+import google.generativeai as genai
+from .chunking import chunk_text
+from .config import GEMINI_EMBED_MODEL
 
 def build_faiss_index(slides, index_path, chunks_json_path, file_type="pptx"):
     """
-    Build FAISS index for the given slides.
-    - slides: list of dicts with key "full_text" and (optionally) "slide_number"
-    - index_path: where to write the faiss.index file
-    - chunks_json_path: where to write the chunks.json (texts + metadata)
-    - file_type: used to pick chunk sizes (defaults to 'pptx')
-    Returns: (index, texts, metadata)
+    Build FAISS index for the given file (PPTX, PDF, DOCX, etc.) using Gemini embeddings.
+
+    Args:
+        slides: list of dicts with keys like {"full_text": "...", "slide_number"/"page_number": X, "file_id": "..."}
+        index_path: path to save FAISS index
+        chunks_json_path: path to save chunk metadata
+        file_type: file type string ('pptx', 'pdf', 'docx', etc.)
+
+    Returns:
+        (index, texts, metadata)
     """
     texts, metadata = [], []
-    for slide in slides:
+
+    # Chunk each page/slide
+    for i, slide in enumerate(slides):
         full_text = slide.get("full_text", "")
-        # chunk_text uses file_type to set size/overlap; preserves original chunking behavior but per-filetype if provided.
+        if not full_text.strip():
+            continue
+
+        # Create chunks for each page/slide
         chunks = chunk_text(full_text, filetype=file_type)
         for chunk in chunks:
-            texts.append(chunk)
-            metadata.append({
-                "slide": slide.get("slide_number", None)  # fallback to None if not present
-            })
+            meta = {}
 
-    # if no texts, return empty structure (preserve behavior)
+            # Detect the logical reference number
+            if file_type.lower() in ("pptx", "ppt"):
+                meta["slide"] = slide.get("slide_number", i + 1)
+            else:
+                meta["page"] = slide.get("page_number", i + 1)
+
+            # Extra info for consistent reference URLs
+            meta["file_id"] = slide.get("file_id")
+            meta["filetype"] = file_type
+
+            texts.append(chunk)
+            metadata.append(meta)
+
+    # Handle case when no text chunks exist
     if not texts:
-        # write empty chunks JSON so other parts can read it
         os.makedirs(os.path.dirname(chunks_json_path) or ".", exist_ok=True)
         with open(chunks_json_path, "w", encoding="utf-8") as f:
             json.dump({"texts": [], "metadata": []}, f, ensure_ascii=False, indent=4)
         return None, [], []
 
+    # ✅ Generate Gemini embeddings for each chunk
     vectors = []
     for text in texts:
-        emb = client.embeddings.create(model="text-embedding-3-small", input=text)
-        vectors.append(emb.data[0].embedding)
-    vectors = np.array(vectors).astype("float32")
+        try:
+            emb_resp = genai.embed_content(
+                model=GEMINI_EMBED_MODEL,
+                content=text,
+                task_type="retrieval_document"
+            )
+            vectors.append(emb_resp["embedding"])
+        except Exception as e:
+            # fallback vector (same dimensionality as Gemini, typically 1536)
+            print("Embedding failed for chunk, using zeros:", e)
+            vectors.append(np.zeros(1536).tolist())
 
-    # create and populate faiss index
+    vectors = np.array(vectors, dtype="float32")
+
+    # Build FAISS index
     index = faiss.IndexFlatL2(vectors.shape[1])
     index.add(vectors)
 
-    # persist index
+    # Save FAISS index to disk
+    os.makedirs(os.path.dirname(index_path) or ".", exist_ok=True)
     faiss.write_index(index, index_path)
 
-    # persist texts + metadata
+    # Save chunks + metadata
+    os.makedirs(os.path.dirname(chunks_json_path) or ".", exist_ok=True)
     with open(chunks_json_path, "w", encoding="utf-8") as f:
         json.dump({"texts": texts, "metadata": metadata}, f, ensure_ascii=False, indent=4)
 

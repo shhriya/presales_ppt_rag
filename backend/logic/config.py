@@ -1,7 +1,7 @@
-# backend/logic/config.py
+# backend/logic/config.py - working code for pdf and pptx
 import os, warnings, logging
 from dotenv import load_dotenv
-from openai import OpenAI
+import google.generativeai as genai
 
 # ===== ENV =====
 load_dotenv()
@@ -25,10 +25,13 @@ FILE_CHUNK_CONFIG = {
     "other": (500, 75),
 }
 
-# ===== OpenAI client =====
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    # Fail fast with a helpful message; upstream caller can handle
-    raise RuntimeError("OPENAI_API_KEY is not set. Add it to backend/.env")
+# ===== Gemini client =====
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY is not set. Add it to backend/.env")
 
-client = OpenAI()
+genai.configure(api_key=GEMINI_API_KEY)
+
+# Default text + embedding models
+GEMINI_CHAT_MODEL = "models/gemini-2.5-pro"
+GEMINI_EMBED_MODEL = "models/text-embedding-004"

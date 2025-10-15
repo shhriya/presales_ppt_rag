@@ -35,6 +35,13 @@ export default function MessageBubble({ role, content, references }) {
                       marginLeft: 4,
                       fontWeight: 500,
                     }}
+                    onClick={(e) => {
+                      // Prevent default for internal routes to avoid opening in new tab
+                      if (ref.url.startsWith('/')) {
+                        e.preventDefault();
+                        window.open(ref.url, '_blank');
+                      }
+                    }}
                   >
                     Page {ref.page}
                   </a>

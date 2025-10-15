@@ -184,11 +184,19 @@ def get_session_chat_history(session_id: str, x_user_id: int | None = Query(defa
         session = db.query(DBSession).filter(DBSession.id == session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
-       
-        # Check if user owns the session (if user_id provided)
-        if x_user_id and session.created_by != x_user_id:
-            raise HTTPException(status_code=403, detail="Not authorized to access this session")
-       
+
+        # For development: Allow access if user is admin or if no user_id provided
+        # In production, you might want stricter permissions
+        if x_user_id:
+            user = db.query(User).filter(User.user_id == x_user_id).first()
+            if user and user.role != "admin" and session.created_by != x_user_id:
+                # Check if user has access to any files in this session
+                session_files = db.query(DBFile).filter(DBFile.id.like(f"{session_id}_%")).all()
+                user_has_access = any(f.uploaded_by == x_user_id for f in session_files)
+
+                if not user_has_access:
+                    raise HTTPException(status_code=403, detail="Not authorized to access this session")
+
         # Load chat history
         chat_history = load_chat_history(session_id)
         return {"session_id": session_id, "messages": chat_history}

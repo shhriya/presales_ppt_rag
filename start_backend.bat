@@ -26,6 +26,6 @@ if exist %ENV_FILE% (
 REM Ensure deps
 .venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 
-echo Starting server on http://127.0.0.1:9000 ...
-.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 9000 --host 127.0.0.1
+echo Starting server on http://127.0.0.1:8000 ...
+.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000 --host 127.0.0.1
 pause

@@ -1,5 +1,6 @@
 import os
 import mysql.connector
+import pymysql  # Add this import
 from sqlalchemy import create_engine, Column, String, Text, ForeignKey, Integer, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -12,7 +13,7 @@ db_config = {
     "host": os.getenv("DB_HOST", "127.0.0.1"),       # Same as Workbench "Hostname"
     "port": int(os.getenv("DB_PORT", "3306")),       # Same as Workbench "Port"
     "user": os.getenv("DB_USER", "root"),            # Same as Workbench "Username"
-    "password": os.getenv("DB_PASS", "pass"),        # Same as Workbench "Password"
+    "password": os.getenv("DB_PASS", "new_password"),        # Same as Workbench "Password"
     "database": os.getenv("DB_NAME", "pptbot"),      # Same as Workbench "Schema"
 }
 
@@ -405,7 +406,31 @@ def delete_group(group_id: int) -> None:
         db.close()
 
 
+def create_user(username: str, email: str, password: str, role: str = "employee") -> int:
+    """Create a new user account."""
+    db = SessionLocal()
+    try:
+        # Check if user already exists
+        existing = db.query(User).filter(User.email == email).first()
+        if existing:
+            raise ValueError("User with this email already exists")
+
+        # Create new user
+        new_user = User(
+            username=username,
+            email=email,
+            password_hash=password,  # Note: In production, hash the password!
+            role=role
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return new_user.user_id
+    finally:
+        db.close()
+
 def leave_group(user_id: int, group_id: int) -> None:
+    """Remove user from a group."""
     db = SessionLocal()
     try:
         db.query(UserGroup).filter(UserGroup.user_id == user_id, UserGroup.group_id == group_id).delete()

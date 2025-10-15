@@ -31,5 +31,5 @@ if (Test-Path $envPath) {
 # Ensure deps (idempotent)
 & .\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt | Out-Host
 
-Write-Host "Starting server on http://127.0.0.1:9000 ..." -ForegroundColor Green
-& .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 9000 --host 127.0.0.1
+Write-Host "Starting server on http://127.0.0.1:8000 ..." -ForegroundColor Green
+& .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000 --host 127.0.0.1

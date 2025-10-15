@@ -24,4 +24,4 @@ IGNORE_FILES = {"Thumbs.db", ".DS_Store"}
 
 # Server config
 HOST = "127.0.0.1"
-PORT = 9000  # ✅ since you said it's always 9000
+PORT = 8000  # ✅ since you said it's always 8000

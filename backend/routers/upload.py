@@ -249,10 +249,15 @@ async def process_upload_file(
     text_slides = [s for s in slides_data if s.get("full_text")]
     index, texts, metadata = None, [], []
     if text_slides:
+        # Add file_id to each slide for reference generation
+        file_id = f"{session_id}_{file.filename}"
+        for slide in slides_data:
+            slide["file_id"] = file_id
+
         try:
             index_path = os.path.join(session_path, "faiss.index")
             chunks_json_path = os.path.join(session_path, "chunks.json")
-            index, texts, metadata = build_faiss_index(text_slides, index_path, chunks_json_path)
+            index, texts, metadata = build_faiss_index(slides_data, index_path, chunks_json_path)
             print(f"📊 Built FAISS index with {len(texts)} chunks")
         except Exception as e:
             print(f"⚠️ Warning: FAISS indexing failed: {e}")
@@ -374,10 +379,15 @@ async def upload_file(
     text_slides = [s for s in slides_data if s.get("full_text")]
     index, texts, metadata = None, [], []
     if text_slides:
+        # Add file_id to each slide for reference generation
+        file_id = f"{session_id}_{file.filename}"
+        for slide in slides_data:
+            slide["file_id"] = file_id
+
         try:
             index_path = os.path.join(session_path, "faiss.index")
             chunks_json_path = os.path.join(session_path, "chunks.json")
-            index, texts, metadata = build_faiss_index(text_slides, index_path, chunks_json_path)
+            index, texts, metadata = build_faiss_index(slides_data, index_path, chunks_json_path)
             print(f"📊 Built FAISS index with {len(texts)} chunks")
         except Exception as e:
             print(f"⚠️ Warning: FAISS indexing failed: {e}")

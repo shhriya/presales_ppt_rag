@@ -26,7 +26,7 @@ export default function UserMenu() {
       const headers = { "Content-Type": "application/json" };
       if (user?.user_id) headers["X-User-Id"] = String(user.user_id);
       if (user?.role) headers["X-User-Role"] = String(user.role);
-      const res = await fetch(`http://localhost:9000/api/users/${user.user_id}/password`, {
+      const res = await fetch(`http://localhost:8000/api/users/${user.user_id}/password`, {
         method: "PUT",
         headers,
         body: JSON.stringify({ password: newPwd })
