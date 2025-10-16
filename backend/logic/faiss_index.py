@@ -83,4 +83,48 @@ def build_faiss_index(slides, index_path, chunks_json_path, file_type="pptx"):
     with open(chunks_json_path, "w", encoding="utf-8") as f:
         json.dump({"texts": texts, "metadata": metadata}, f, ensure_ascii=False, indent=4)
 
-    return index, texts, metadata
+def load_session_data(session_id: str):
+    """
+    Load FAISS index, texts, and metadata for a given session_id from disk.
+
+    Args:
+        session_id: The session ID to load data for
+
+    Returns:
+        (index, texts, metadata) or (None, [], []) if not found
+    """
+    from backend.config import SESSIONS_DIR
+
+    # Construct file paths
+    index_path = os.path.join(SESSIONS_DIR, session_id, "faiss.index")
+    chunks_json_path = os.path.join(SESSIONS_DIR, session_id, "chunks.json")
+
+    print(f"[load_session_data] Looking for files: {index_path}, {chunks_json_path}")
+
+    # Check if files exist
+    index_exists = os.path.exists(index_path)
+    chunks_exists = os.path.exists(chunks_json_path)
+    print(f"[load_session_data] Index file exists: {index_exists}, Chunks file exists: {chunks_exists}")
+
+    if not index_exists or not chunks_exists:
+        print(f"[load_session_data] Missing files for session {session_id}")
+        return None, [], []
+
+    try:
+        # Load FAISS index
+        print(f"[load_session_data] Loading FAISS index from {index_path}")
+        index = faiss.read_index(index_path)
+
+        # Load chunks and metadata
+        print(f"[load_session_data] Loading chunks from {chunks_json_path}")
+        with open(chunks_json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            texts = data.get("texts", [])
+            metadata = data.get("metadata", [])
+
+        print(f"[load_session_data] Loaded index: {index is not None}, texts: {len(texts)}, metadata: {len(metadata)}")
+        return index, texts, metadata
+
+    except Exception as e:
+        print(f"[load_session_data] Error loading session data for {session_id}: {e}")
+        return None, [], []

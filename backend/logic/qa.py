@@ -100,10 +100,11 @@ def search_and_answer(query, index, texts, metadata):
     if not index or not texts:
         return {"text": "Sorry, I don't have data to answer that yet. Upload a file first.", "references": []}
 
-    # ---------------- Retrieval ----------------
+    # Check if this is a fallback session (no FAISS index)
+    is_fallback = index is None
     retrieved = []
     try:
-        # ✅ detect "page X" or "slide X"
+        # detect "page X" or "slide X"
         match = re.search(r"(?:page|slide)\s+(\d+)", actual_question.lower())
         if match:
             ref_num = int(match.group(1))
@@ -117,16 +118,36 @@ def search_and_answer(query, index, texts, metadata):
             if not retrieved:
                 retrieved = texts[:min(3, len(texts))]
         else:
-            # embedding retrieval
-            query_emb = compute_embedding(actual_question)
-            D, I = index.search(np.array([query_emb], dtype="float32"), 3)
-            ids = [int(i) for i in I[0] if 0 <= int(i) < len(texts)]
-            seen, valid_ids = set(), []
-            for i in ids:
-                if i not in seen:
-                    valid_ids.append(i)
-                    seen.add(i)
-            retrieved = [texts[i] for i in valid_ids] or texts[:min(3, len(texts))]
+            if is_fallback:
+                # Fallback mode: simple text search
+                query_lower = actual_question.lower()
+                scored_texts = []
+                for i, text in enumerate(texts):
+                    score = 0
+                    # Simple keyword matching for fallback
+                    text_lower = text.lower()
+                    query_words = set(_tokenize(query_lower))
+                    text_words = set(_tokenize(text_lower))
+                    score = len(query_words & text_words) / max(len(query_words), 1)
+
+                    scored_texts.append((score, text, i))
+
+                # Sort by relevance score and take top 3
+                scored_texts.sort(key=lambda x: x[0], reverse=True)
+                retrieved = [text for _, text, _ in scored_texts[:3] if text]
+                if not retrieved:
+                    retrieved = texts[:min(3, len(texts))]
+            else:
+                # embedding retrieval
+                query_emb = compute_embedding(actual_question)
+                D, I = index.search(np.array([query_emb], dtype="float32"), 3)
+                ids = [int(i) for i in I[0] if 0 <= int(i) < len(texts)]
+                seen, valid_ids = set(), []
+                for i in ids:
+                    if i not in seen:
+                        valid_ids.append(i)
+                        seen.add(i)
+                retrieved = [texts[i] for i in valid_ids] or texts[:min(3, len(texts))]
     except Exception:
         logger.exception("Retrieval step failed")
         retrieved = texts[:min(3, len(texts))]
@@ -184,19 +205,12 @@ Answer:
         question_tokens = set(_tokenize(actual_question))
         answer_tokens = set(_tokenize(text))
 
-        # Create a mapping of chunks to their indices for faster lookup
-        chunk_to_indices = defaultdict(list)
-        for idx, chunk in enumerate(texts):
-            chunk_to_indices[str(chunk)].append(idx)
-
+        # Create a mapping of chunks to their metadata for more accurate reference generation
+        chunk_relevance = defaultdict(float)
         page_relevance = defaultdict(float)
 
-        for chunk_text, indices in chunk_to_indices.items():
-            if not indices or not metadata:
-                continue
-
-            chunk_tokens = set(_tokenize(chunk_text))
-            meta = metadata[indices[0]]
+        for idx, (chunk, meta) in enumerate(zip(texts, metadata or [])):
+            chunk_tokens = set(_tokenize(chunk))
 
             # Calculate relevance score combining question and answer
             question_overlap = len(question_tokens & chunk_tokens) / max(len(question_tokens), 1)
@@ -205,35 +219,43 @@ Answer:
             # Weight answer relevance more heavily (70% answer, 30% question)
             relevance_score = (0.7 * answer_overlap) + (0.3 * question_overlap)
 
-            # Only consider chunks with meaningful relevance
-            if relevance_score > 0.1:  # Minimum threshold for relevance
+            if relevance_score > 0.05:  # Lower threshold for more inclusive matching
                 refnum = _get_refnum_from_meta(meta) or 1
                 page_relevance[refnum] += relevance_score
+                chunk_relevance[idx] = relevance_score
 
-        # Sort pages by relevance and limit to reasonable number
+        # Sort pages by total relevance
         sorted_pages = sorted(page_relevance.items(), key=lambda x: x[1], reverse=True)
 
-        # Limit references: min 1, max 3, or based on content significance
-        max_refs = min(3, len([p for p, score in sorted_pages if score > 0.2]))
+        # Take top 3 most relevant pages
+        max_refs = min(3, len(sorted_pages))
 
-        for page_num, relevance in sorted_pages[:max_refs]:
-            if relevance > 0.15:  # Only include significantly relevant pages
+        for page_num, total_relevance in sorted_pages[:max_refs]:
+            if total_relevance > 0.1:  # Only include significantly relevant pages
+                # Find the best chunk for this page to get file_id
+                best_chunk_idx = None
+                best_chunk_relevance = 0
+
+                for idx, meta in enumerate(metadata or []):
+                    meta_refnum = _get_refnum_from_meta(meta) or 1
+                    if meta_refnum == page_num and chunk_relevance.get(idx, 0) > best_chunk_relevance:
+                        best_chunk_relevance = chunk_relevance.get(idx, 0)
+                        best_chunk_idx = idx
+
                 ref_url = None
-                for i, m in enumerate(metadata or []):
-                    rnum = _get_refnum_from_meta(m)
-                    if rnum == page_num:
-                        fid = m.get("file_id")
-                        if fid:
-                            ref_url = f"/files/{fid}?page={page_num}"
-                            break
+                if best_chunk_idx is not None and metadata:
+                    fid = metadata[best_chunk_idx].get("file_id")
+                    if fid:
+                        ref_url = f"/files/{fid}?page={page_num}"
+
                 if not ref_url:
                     ref_url = f"/files/placeholder?page={page_num}"
 
-                # Calculate percentage based on relevance
-                total_relevance = sum(score for _, score in sorted_pages[:max_refs])
-                accuracy = round((relevance / total_relevance) * 100, 1) if total_relevance > 0 else 0
-
-                references.append({"page": page_num, "accuracy": accuracy, "url": ref_url})
+                references.append({
+                    "page": page_num,
+                    "accuracy": round((total_relevance / sum(r for _, r in sorted_pages[:max_refs])) * 100, 1) if sorted_pages[:max_refs] else 100.0,
+                    "url": ref_url
+                })
 
         # Ensure at least 1 reference if we have content
         if not references and page_relevance:

@@ -154,6 +154,20 @@ def my_sessions(x_user_id: int | None = Query(default=None), x_user_role: str | 
             last_file = None
             if files:
                 last_file = max(files, key=lambda f: f.uploaded_at or 0)
+            
+            # Get slides count from slides.json file
+            slides_count = 0
+            if files:
+                session_path = os.path.join(SESSIONS_DIR, sid)
+                slides_json_path = os.path.join(session_path, "slides.json")
+                if os.path.exists(slides_json_path):
+                    try:
+                        with open(slides_json_path, "r", encoding="utf-8") as f:
+                            slides_data = json.load(f)
+                            slides_count = len(slides_data)
+                    except Exception:
+                        slides_count = 0  # Fallback to 0 if file can't be read
+            
             uploader = None
             if s.created_by:
                 u = db.query(User).filter(User.user_id == s.created_by).first()
@@ -169,7 +183,8 @@ def my_sessions(x_user_id: int | None = Query(default=None), x_user_role: str | 
                     "id": last_file.id if last_file else None,
                     "original_filename": last_file.original_filename if last_file else None,
                     "uploaded_at": last_file.uploaded_at.isoformat() if (last_file and last_file.uploaded_at) else None,
-                }
+                },
+                "items_count": slides_count  # Use actual slides count
             })
     finally:
         db.close()

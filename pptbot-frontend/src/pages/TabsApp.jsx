@@ -70,19 +70,25 @@ export default function TabsApp() {
       const savedSession = localStorage.getItem("chat_session_id");
       const savedSlides = localStorage.getItem("chat_slides");
       const savedSessionMessages = localStorage.getItem("chat_session_messages");
+      console.log("[useEffect] Restoring from localStorage - sessionId:", savedSession, "slides:", savedSlides);
       if (savedSession) setSessionId(savedSession);
       if (savedSlides) setSlides(Number(savedSlides) || 0);
       if (savedSessionMessages) setSessionMessages(JSON.parse(savedSessionMessages));
-    } catch {}
+    } catch (e) {
+      console.error("[useEffect] Error restoring from localStorage:", e);
+    }
   }, []);
  
   // Load chat history from database when session changes
   useEffect(() => {
+    console.log("[useEffect session change] sessionId:", sessionId, "user?.user_id:", user?.user_id);
     if (sessionId && user?.user_id) {
+      console.log("[useEffect] Loading chat history from database for session:", sessionId);
       // Load chat history from database
       getSessionChatHistory(sessionId)
         .then(historyRes => {
           const dbMessages = historyRes.messages || [];
+          console.log("[useEffect] Loaded messages from DB:", dbMessages.length, "messages");
           setMessages(dbMessages);
           setSessionMessages(prev => ({ ...prev, [sessionId]: dbMessages }));
         })
@@ -92,10 +98,12 @@ export default function TabsApp() {
           setMessages([]);
         });
     } else if (sessionId) {
+      console.log("[useEffect] No user but session exists, loading from localStorage");
       // If no user but session exists, try to load from localStorage
       const localMessages = sessionMessages[sessionId] || [];
       setMessages(localMessages);
     } else {
+      console.log("[useEffect] No sessionId, clearing messages");
       setMessages([]);
     }
   }, [sessionId, user?.user_id]);
@@ -132,6 +140,18 @@ export default function TabsApp() {
   useEffect(() => {
     refreshSessions();
   }, [user]);
+
+  // Auto-switch to previously selected session when sessions are loaded
+  useEffect(() => {
+    if (sessions.length > 0 && sessionId && user?.user_id) {
+      const currentSession = sessions.find(s => s.session_id === sessionId);
+      if (currentSession) {
+        // Update slides count from session data (in case it changed)
+        setSlides(currentSession.items_count || 0);
+        setCurrentFilename(currentSession.last_file?.original_filename || "");
+      }
+    }
+  }, [sessions, sessionId, user?.user_id]);
  
   // Create new session
   function createNewSession() {
@@ -171,6 +191,7 @@ export default function TabsApp() {
   // Switch to a session
   async function switchToSession(session) {
     setSessionId(session.session_id);
+    setSlides(session.items_count || 0);  // Set slides count from session data
     setCurrentFilename(session.last_file?.original_filename || "");
     try { localStorage.setItem("chat_session_id", session.session_id); } catch {}
    
@@ -204,11 +225,14 @@ export default function TabsApp() {
     try {
       const res = await uploadFile(file, user, sessionId);
       const newSessionId = res.session_id;
+      console.log("[handleUpload] Upload response:", res);
+      console.log("[handleUpload] New sessionId:", newSessionId);
       setSessionId(newSessionId);
       setSlides(res.items_count || 0);
       setCurrentFilename(res.filename || (file?.name || ""));
       // Refresh sessions list to show the new/updated session
       await refreshSessions();
+      console.log("[handleUpload] After setting state - sessionId:", sessionId, "slides:", res.items_count || 0);
     } catch (e) {
       setError(e.message || "Upload failed.");
     } finally {
@@ -218,15 +242,42 @@ export default function TabsApp() {
   }
  
   async function handleSend(question) {
+    console.log("[handleSend] Current sessionId:", sessionId);
+    console.log("[handleSend] Current slides:", slides);
+    console.log("[handleSend] Current currentFilename:", currentFilename);
+    console.log("[handleSend] isIndexing:", isIndexing);
+
     if (!sessionId) {
       setError("Please upload a file first to start a session.");
       return;
     }
+
+    // Check if session is ready (not indexing and has slides)
+    if (isIndexing || slides === 0) {
+      // If we have a sessionId but slides is 0, check if the session actually has content
+      if (sessionId && sessions.length > 0) {
+        const currentSession = sessions.find(s => s.session_id === sessionId);
+        if (currentSession && currentSession.items_count > 0) {
+          // Session has content, update local state and continue
+          setSlides(currentSession.items_count);
+          setCurrentFilename(currentSession.last_file?.original_filename || "");
+        } else {
+          setError("Please wait for file processing to complete before asking questions.");
+          return;
+        }
+      } else {
+        setError("Please wait for file processing to complete before asking questions.");
+        return;
+      }
+    }
+
     setError("");
     const next = [...messages, { role: "user", content: question }];
     setMessages(next); setIsAsking(true);
     try {
+      console.log("[handleSend] Calling askQuestion with sessionId:", sessionId, "and question:", question);
       const res = await askQuestion(sessionId, question);
+      console.log("[handleSend] askQuestion response:", res);
       const answer = res.answer;
       const references = res.references || [];
       // Append answer with references
@@ -235,6 +286,9 @@ export default function TabsApp() {
       // Update session messages
       setSessionMessages(prev => ({ ...prev, [sessionId]: finalMessages }));
     } catch (e) {
+      console.error("[handleSend] askQuestion failed:", e);
+      console.error("[handleSend] Error message:", e.message);
+      console.error("[handleSend] Error response:", e.response);
       const errorMessages = [...next, { role: "assistant", content: "Error: " + (e.message || "ask failed") }];
       setMessages(errorMessages);
       setSessionMessages(prev => ({ ...prev, [sessionId]: errorMessages }));

@@ -57,14 +57,22 @@ export async function uploadFile(file, user, sessionId) {
 
 // Ask question (still needs sessionId)
 export async function askQuestion(sessionId, question) {
+  console.log("[askQuestion] Sending request with sessionId:", sessionId, "question:", question);
   const res = await fetch(`${BASE_URL}/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId, question }),
   });
 
-  if (!res.ok) throw new Error((await res.json()).detail || "Ask failed");
-  return res.json();
+  console.log("[askQuestion] Response status:", res.status, "ok:", res.ok);
+  if (!res.ok) {
+    const errorData = await res.json();
+    console.error("[askQuestion] Error response:", errorData);
+    throw new Error(errorData.detail || "Ask failed");
+  }
+  const result = await res.json();
+  console.log("[askQuestion] Success response:", result);
+  return result;
 }
 
 // ✅ List ALL stored files (no session filter by default)

@@ -262,22 +262,19 @@ async def process_upload_file(
         except Exception as e:
             print(f"⚠️ Warning: FAISS indexing failed: {e}")
 
-    # 7️⃣ Store session in memory
-    SESSIONS[session_id] = {"index": index, "texts": texts, "metadata": metadata}
-    print(f"🧠 Session stored in memory")
-
-    # 8️⃣ Try DB registration
-    try:
-        user_id = x_user_id or 1
-        # Create meaningful session name from filename
-        session_name = os.path.splitext(file.filename)[0] if file.filename else f"Session {session_id[:8]}"
-        ensure_session(session_id, user_id, session_name)
-        register_file(session_id, file.filename, user_id, file_path, session_path, slides_data)
-        print(f"✅ Registered file in DB")
-    except Exception as e:
-        print(f"⚠️ Warning: DB register failed: {e}")
-
-    # 9️⃣ Return response
+    # 8️⃣ Register session in DB if we have slides data (even if FAISS failed)
+    if slides_data:
+        try:
+            user_id = x_user_id or 1
+            # Create meaningful session name from filename
+            session_name = os.path.splitext(file.filename)[0] if file.filename else f"Session {session_id[:8]}"
+            ensure_session(session_id, user_id, session_name)
+            register_file(session_id, file.filename, user_id, file_path, session_path, slides_data)
+            print(f"✅ Registered file in DB")
+        except Exception as e:
+            print(f"⚠️ Warning: DB register failed: {e}")
+    else:
+        print(f"⚠️ Warning: Not registering session in DB - no slides data extracted")
     file_id = f"{session_id}_{file.filename}"
     return {
         "session_id": session_id,
@@ -392,22 +389,19 @@ async def upload_file(
         except Exception as e:
             print(f"⚠️ Warning: FAISS indexing failed: {e}")
 
-    # 7️⃣ Store session in memory
-    SESSIONS[session_id] = {"index": index, "texts": texts, "metadata": metadata}
-    print(f"🧠 Session stored in memory")
-
-    # 8️⃣ Try DB registration, but don't fail session creation if DB fails
-    try:
-        user_id = x_user_id or 1
-        # Create meaningful session name from filename
-        session_name = os.path.splitext(file.filename)[0] if file.filename else f"Session {session_id[:8]}"
-        ensure_session(session_id, user_id, session_name)
-        register_file(session_id, file.filename, user_id, file_path, session_path, slides_data)
-        print(f"✅ Registered file in DB")
-    except Exception as e:
-        print(f"⚠️ Warning: DB register failed: {e}")
-
-    # 9️⃣ Return session info to frontend with file_id that matches expected format
+    # 8️⃣ Register session in DB if we have slides data (even if FAISS failed)
+    if slides_data:
+        try:
+            user_id = x_user_id or 1
+            # Create meaningful session name from filename
+            session_name = os.path.splitext(file.filename)[0] if file.filename else f"Session {session_id[:8]}"
+            ensure_session(session_id, user_id, session_name)
+            register_file(session_id, file.filename, user_id, file_path, session_path, slides_data)
+            print(f"✅ Registered file in DB")
+        except Exception as e:
+            print(f"⚠️ Warning: DB register failed: {e}")
+    else:
+        print(f"⚠️ Warning: Not registering session in DB - no slides data extracted")
     file_id = f"{session_id}_{file.filename}"
     return {
         "session_id": session_id,
