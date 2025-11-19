@@ -1,3 +1,4 @@
+// pptbot-frontend\src\components\FilePreviewModal.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BASE_URL } from '../api/api';

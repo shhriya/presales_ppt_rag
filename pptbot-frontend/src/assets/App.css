@@ -3,7 +3,7 @@
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
-  text-align: center;
+  /* text-align: center; */
 }
  
 .logo {
@@ -42,21 +42,52 @@
   color: #888;
 }
 
-.user-list::-webkit-scrollbar {
+
+
+/* ADMIN PAGE INTERNAL SCROLL LAYOUT */
+.admin-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(90vh - 100px); /* adjust for header + tabs height */
+  overflow: hidden; /* prevent browser scroll */
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 2px 2px;
+}
+
+.admin-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.user-list-scroll {
+  flex: 1;
+  overflow-y: auto; /* scroll inside */
+  padding: 10px 20px;
+  scroll-behavior: smooth;
+}
+
+.user-list-scroll::-webkit-scrollbar {
   width: 8px;
 }
 
-.user-list::-webkit-scrollbar-track {
-  background: #1e293b;
+.user-list-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
   border-radius: 8px;
 }
 
-.user-list::-webkit-scrollbar-thumb {
-  background: #475569;
-  border-radius: 8px;
-  transition: background 0.3s ease;
+.user-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
 }
 
-.user-list::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+.user-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
 }

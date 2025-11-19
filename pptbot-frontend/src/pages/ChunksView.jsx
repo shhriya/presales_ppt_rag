@@ -22,8 +22,28 @@ export default function ChunksView() {
 
   return (
     <div>
-      <Link to="/" style={{ marginLeft: 20, display: "inline-block", marginBottom: 12 }}>← Back</Link>
-      <h2 style={{ textAlign: "center" }}>Chunks for {sessionId}</h2>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px', padding: '0 20px' }}>
+        <Link 
+          to="/?tab=chunks" 
+          style={{ 
+            display: 'inline-flex', 
+            alignItems: 'center',
+            padding: '6px 12px',
+            background: '#0a225e',
+            color: 'white',
+            borderRadius: '4px',
+            textDecoration: 'none',
+            transition: 'background-color 0.2s',
+            ':hover': {
+              backgroundColor: '#ff3c00'
+            }
+          }}
+        >
+          ← Back to Chunks
+        </Link>
+        <h2 style={{ margin: '0 auto', textAlign: 'center' }}>Chunks for {sessionId}</h2>
+        <div style={{ width: '120px' }}></div> {/* For centering the title */}
+      </div>
       {error && <div style={{ color: "#fca5a5", textAlign: "center" }}>{error}</div>}
 
       <ul style={{ listStyle: "none", padding: 0, maxWidth: 900, margin: "0 auto" }}>

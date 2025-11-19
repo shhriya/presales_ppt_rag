@@ -1,62 +1,313 @@
 // src/components/Groups.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
-// import { ExtractionProvider } from "../context/ExtractionContext";
-import { useExtraction } from "../context/ExtractionContext"; // import the hook
-import { listGroups, getGroupFiles, removeFileFromGroup, createGroup, getGroupUsers, addUserToGroupByEmail, removeUserFromGroup, deleteGroup, BASE_URL } from "../api/api";
-// Helper to convert UTC date string to IST and format
+import "./Groups.css";
+import { useExtraction } from "../context/ExtractionContext";
+import {
+  listGroups,
+  getGroupFiles,
+  removeFileFromGroup,
+  createGroup,
+  getGroupUsers,
+  addUserToGroupByEmail,
+  removeUserFromGroup,
+  deleteGroup,
+  BASE_URL,
+} from "../api/api";
+
+/* ----------------------
+   Helpers
+   ---------------------- */
 function toIST(dateString) {
   if (!dateString) return "";
   const date = new Date(dateString);
-  // Add 5 hours 30 minutes to UTC time
   const istTime = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+
   return istTime.toLocaleString("en-IN", {
     year: "numeric",
     month: "short",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit"
+    second: "2-digit",
   }) + " IST";
 }
+/* ----------------------
+   Small internal components
+   (keeps main render clear)
+   ---------------------- */
 
+/* Generic modal wrapper */
+function Modal({ children, onClose, large = false }) {
+  return (
+    <div className="modal-overlay" onMouseDown={onClose}>
+      <div
+        className={`modal ${large ? "large" : ""}`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* Create Group Modal */
+function CreateGroupModal({
+  name,
+  setName,
+  description,
+  setDescription,
+  onCreate,
+  onCancel,
+  creating,
+  error,
+}) {
+  return (
+    <Modal onClose={onCancel}>
+      <h3>Create Group</h3>
+      {error && <div className="error-message">{error}</div>}
+      <input
+        type="text"
+        placeholder="Group name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <textarea
+        placeholder="Description (optional)"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+      />
+      <div className="modal-actions">
+        <button onClick={onCancel}>Cancel</button>
+        <button onClick={onCreate} disabled={creating}>
+          {creating ? "Creating..." : "Create"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/* Upload File Modal */
+function UploadFileModal({
+  selectedFile,
+  setSelectedFile,
+  onUpload,
+  onCancel,
+  uploading,
+  error,
+}) {
+  return (
+    <Modal onClose={onCancel}>
+      <h3>Upload File</h3>
+      {error && <div className="error-message">{error}</div>}
+      <input
+        type="file"
+        onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+      />
+      {selectedFile && (
+        <div className="selected-file-info">{selectedFile.name}</div>
+      )}
+      <div className="modal-actions">
+        <button onClick={onCancel} disabled={uploading}>
+          Cancel
+        </button>
+        <button onClick={onUpload} disabled={uploading}>
+          {uploading ? "Uploading..." : "Upload"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/* Manage Users Modal */
+function ManageUsersModal({
+  groupUsers,
+  newUserEmail,
+  setNewUserEmail,
+  missingUserEmail,
+  onAddUser,
+  onRemoveUser,
+  onClose,
+  error,
+  loadingUsers,
+}) {
+  return (
+    <Modal onClose={onClose} large>
+      <h3>Manage Users</h3>
+      {error && <div className="error-message">{error}</div>}
+      <div className="user-add-section">
+        <input
+          type="email"
+          placeholder="Add user by email"
+          value={newUserEmail}
+          onChange={(e) => setNewUserEmail(e.target.value)}
+        />
+        <button onClick={onAddUser}>Add</button>
+      </div>
+      {missingUserEmail && (
+        <div className="error-message">
+          User "{missingUserEmail}" does not exist. Create user in Admin first.
+        </div>
+      )}
+      <h4>Users in this group</h4>
+      <div className="user-list">
+        {loadingUsers ? (
+          <div className="loading-state">Loading users...</div>
+        ) : groupUsers.length === 0 ? (
+          <div className="empty-state">No users yet</div>
+        ) : (
+          groupUsers.map((u) => (
+              <div className="user-row" key={u.user_id ?? u.id ?? u.email}>
+                <span>{u.email || u.username || u.name}</span>
+                <button onClick={() => onRemoveUser(u.user_id ?? u.id)}>Remove</button>
+              </div>
+          ))
+        )}
+      </div>
+
+      <div className="modal-actions">
+        <button onClick={onClose}>Close</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* File card inside list */
+function FileCard({ file, currentUser, isAdmin, onView, onDownload, onDelete }) {
+  const isMine =
+    (file.uploaded_by && String(file.uploaded_by) === String(currentUser?.user_id)) ||
+    (file.uploader?.id && String(file.uploader.id) === String(currentUser?.user_id));
+
+  const ext = (file.original_filename || "").split(".").pop()?.toLowerCase();
+  const icon = "📄"; // you can switch to icons later
+
+  // Short pretty date
+  const dateObj = new Date(file.uploaded_at);
+  const prettyTime =
+    dateObj.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) +
+    " • " +
+    dateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+  return (
+    <div className="filecard-container">
+      <div className="filecard-left">
+        <div className="filecard-icon">{icon}</div>
+
+        <div className="filecard-info">
+          <div className="filecard-name">{file.original_filename}</div>
+          <div className="filecard-meta">
+            Uploaded by: {file.uploader?.username || "Unknown"}
+          </div>
+          <div className="filecard-time">{prettyTime}</div>
+        </div>
+      </div>
+
+      <div className="filecard-menu">
+        <div className="dropdown">
+          <button className="menu-btn">
+            <i className="bi bi-three-dots-vertical"></i>
+          </button>
+
+          <div className="dropdown-menu">
+            <div onClick={() => onView(file.id, file.original_filename)}>View</div>
+            <div onClick={() => onDownload(file.id, file.original_filename)}>Download</div>
+            {(isAdmin || isMine) && (
+              <div onClick={() => onDelete(file.id)} className="delete-option">Delete</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* Groups list item */
+function GroupListItem({ group, selected, onSelect }) {
+  return (
+    
+    <div
+      className="my-groups"
+      
+      style={{
+        padding: "12px 14px",
+        borderRadius: 8,
+        border: "1px solid rgba(255,255,255,0.15)",
+        cursor: "pointer",
+        background: selected ? "#0a225e" : "rgba(255,255,255,0.05)",
+        color: selected ? "white" : "var(--primary)",
+        transition: "all 0.2s",
+      }}
+      onClick={() => onSelect(group)}
+    >
+      <div style={{ fontWeight: 600, fontSize: 15 }}>{group.name}</div>
+      {group.description && <div style={{ fontSize: 13, opacity: 0.7 }}>{group.description}</div>}
+      <div style={{ fontSize: 12, opacity: 0.5, marginTop: 4 }}>
+        Created: {new Date(group.joined_at || Date.now()).toLocaleDateString()}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------
+   Main Groups component
+   ---------------------- */
 export default function Groups() {
   const { user } = useAuth();
-  const { setExtracting } = useExtraction();
-  const isAdmin = (user?.role || "").toLowerCase() === "admin";
+  // const { setExtracting } = useExtraction();
   const navigate = useNavigate();
+
+  const isAdmin = (user?.role || "").toLowerCase() === "admin";
+
+  // Primary state
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [groupFiles, setGroupFiles] = useState([]);
-  const [error, setError] = useState("");
+  const [groupUsers, setGroupUsers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+
+
+  // UI state
   const [loading, setLoading] = useState(false);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [error, setError] = useState("");
+
+  // Modals
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDescription, setNewGroupDescription] = useState("");
+
   const [showUploadFile, setShowUploadFile] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+
   const [showManageUsers, setShowManageUsers] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
-  const [groupUsers, setGroupUsers] = useState([]);
   const [missingUserEmail, setMissingUserEmail] = useState("");
+
   const [isSmall, setIsSmall] = useState(false);
-  // Button interaction helpers for hover/active visuals without changing logic
+
+  // Visual helper (keeps your style behaviour)
   const baseBtnStyle = { background: "#e5e7eb", color: "#111827" };
   function interactiveButtonProps(hoverBg, activeBg, hoverColor = "#ffffff") {
     return {
       onMouseEnter: (e) => { e.currentTarget.style.background = hoverBg; e.currentTarget.style.color = hoverColor; },
       onMouseLeave: (e) => { e.currentTarget.style.background = baseBtnStyle.background; e.currentTarget.style.color = baseBtnStyle.color; },
       onMouseDown: (e) => { e.currentTarget.style.background = activeBg; },
-      onMouseUp:   (e) => { e.currentTarget.style.background = hoverBg; },
+      onMouseUp: (e) => { e.currentTarget.style.background = hoverBg; },
     };
   }
 
-  async function loadGroups() {
+  /* ----------------------
+     API interactions
+     ---------------------- */
+
+  const loadGroups = useCallback(async () => {
+    setError("");
+    setLoading(true);
     try {
-      setError("");
-      setLoading(true);
       const res = await listGroups();
       setGroups(res || []);
     } catch (e) {
@@ -64,78 +315,106 @@ export default function Groups() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function loadGroupFiles(groupId) {
+  const loadGroupFiles = useCallback(async (groupId) => {
     if (!groupId) return;
+    setError("");
     try {
-      setError("");
       const res = await getGroupFiles(groupId);
       setGroupFiles(res || []);
     } catch (e) {
       setError(e.message || "Failed to load group files");
     }
-  }
+  }, []);
 
-  async function loadGroupUsers(groupId) {
+  const loadGroupUsers = useCallback(async (groupId) => {
     if (!groupId) return;
+    setError("");
+    setLoadingUsers(true);
     try {
-      setError("");
       const res = await getGroupUsers(groupId);
       setGroupUsers(res || []);
     } catch (e) {
       setError(e.message || "Failed to load group users");
+    } finally {
+      setLoadingUsers(false);
     }
-  }
+  }, []);
 
+  useEffect(() => {
+    loadGroups();
+  }, [loadGroups]);
 
+  useEffect(() => {
+    if (selectedGroup) {
+      loadGroupFiles(selectedGroup.group_id);
+      loadGroupUsers(selectedGroup.group_id);
+    } else {
+      setGroupFiles([]);
+      setGroupUsers([]);
+    }
+  }, [selectedGroup, loadGroupFiles, loadGroupUsers]);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsSmall(window.innerWidth < 900);
+    }
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  /* ----------------------
+     Action handlers
+     ---------------------- */
 
   async function handleCreateGroup() {
     if (!newGroupName.trim()) {
       setError("Group name is required");
       return;
     }
-    // Optimistic UI: add immediately and reconcile after API
     setError("");
-    // Clear any prior messages
+    setCreatingGroup(true);
+
+    // Optimistic add (keeps behavior you had)
     const tempGroup = {
       group_id: `temp-${Date.now()}`,
       name: newGroupName,
       description: newGroupDescription,
-      joined_at: new Date().toISOString()
+      joined_at: new Date().toISOString(),
     };
     setGroups((prev) => [tempGroup, ...prev]);
     setSelectedGroup(tempGroup);
     setShowCreateGroup(false);
-    // Suppress success banner per request
+
     const nameToCreate = newGroupName;
     const descToCreate = newGroupDescription;
     setNewGroupName("");
     setNewGroupDescription("");
+
     try {
       const created = await createGroup(nameToCreate, descToCreate);
-      // Replace temp with real
       if (created && created.group_id) {
-        setGroups((prev) => prev.map(g => g.group_id === tempGroup.group_id ? created : g));
+        setGroups((prev) => prev.map((g) => (g.group_id === tempGroup.group_id ? created : g)));
         setSelectedGroup(created);
       } else {
-        // fallback: reload groups from server
         await loadGroups();
       }
     } catch (_e) {
-      // Keep optimistic group; avoid showing error per requirement
-      // Attempt soft refresh in background
+      // best-effort: refresh groups
       try { await loadGroups(); } catch {}
+    } finally {
+      setCreatingGroup(false);
     }
   }
 
-
-
-  async function handleRemoveFileFromGroup(fileId, groupId) {
+  async function handleRemoveFileFromGroup(fileId) {
+    if (!selectedGroup) return;
+    setError("");
     try {
-      setError("");
-      await removeFileFromGroup(fileId, groupId);
-      await loadGroupFiles(groupId);
+      await removeFileFromGroup(fileId, selectedGroup.group_id);
+      await loadGroupFiles(selectedGroup.group_id);
     } catch (e) {
       setError(e.message || "Failed to remove file from group");
     }
@@ -151,81 +430,61 @@ export default function Groups() {
       return;
     }
 
+    setError("");
+    setUploadingFile(true);
+    // setExtracting(true);
     try {
-      setError("");
-      setUploadingFile(true);
-      setExtracting(true); // Block navigation and show overlay
-
-      // Create FormData for file upload
       const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('group_id', selectedGroup.group_id);
+      formData.append("file", selectedFile);
+      formData.append("group_id", selectedGroup.group_id);
 
-      // Upload file to backend
-      // Include auth headers so backend can attribute upload and permissions
-      const rawUser = localStorage.getItem('user');
+      const rawUser = localStorage.getItem("user");
       let headers = {};
       if (rawUser) {
         try {
           const u = JSON.parse(rawUser);
-          if (u?.user_id) headers['X-User-Id'] = String(u.user_id);
-          if (u?.role) headers['X-User-Role'] = String(u.role);
+          if (u?.user_id) headers["X-User-Id"] = String(u.user_id);
+          if (u?.role) headers["X-User-Role"] = String(u.role);
         } catch {}
       }
+
       const uploadResponse = await fetch(`${BASE_URL}/upload`, {
-        method: 'POST',
+        method: "POST",
         headers,
         body: formData,
       });
 
       if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        throw new Error(errorData.detail || 'Failed to upload file');
+        let err = "Failed to upload file";
+        try {
+          const data = await uploadResponse.json();
+          err = data.detail || err;
+        } catch {}
+        throw new Error(err);
       }
 
-      const uploadResult = await uploadResponse.json();
-      // File is automatically added to the group by the backend
-
-      // Optionally, poll backend for extraction status here if needed
-
-      // Refresh the group files
       await loadGroupFiles(selectedGroup.group_id);
-
-      // Reset form
       setSelectedFile(null);
       setShowUploadFile(false);
-
     } catch (e) {
       setError(e.message || "Failed to upload file");
     } finally {
       setUploadingFile(false);
-      setExtracting(false); // Unblock navigation and hide overlay
+      // setExtracting(false);
     }
   }
 
-async function handleViewFile(fileId, filename) {
-  const ext = filename.split('.').pop()?.toLowerCase();
-  const fileUrl = `${BASE_URL}/api/files/${fileId}`;
-  if ((ext === "docx" || ext === "pptx") && window.location.hostname === "localhost") {
-    alert("Preview not available for DOCX/PPTX on localhost. Please download the file or deploy to a public server to enable online preview.");
-  } else if (ext === "docx" || ext === "pptx") {
-    // Use Office Online Viewer for docx and pptx
-    const officeUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`;
-    window.open(officeUrl, '_blank');
-  } else {
-    // Open directly for images, pdf, etc.
-    window.open(fileUrl, '_blank');
+  function handleViewFile(fileId, filename) {
+     navigate(`/groups/file/${fileId}/${filename}`);
   }
-}
 
   async function handleDownloadFile(fileId, filename) {
     try {
-      // Download file via explicit download endpoint
       const response = await fetch(`${BASE_URL}/api/files/${fileId}/download`);
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        const a = document.createElement("a");
         a.href = url;
         a.download = filename;
         document.body.appendChild(a);
@@ -233,24 +492,10 @@ async function handleViewFile(fileId, filename) {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       } else {
-        throw new Error('Download failed');
+        throw new Error("Download failed");
       }
     } catch (e) {
       setError("Failed to download file");
-    }
-  }
-
-  function getFileIcon(filename) {
-    const ext = filename.split('.').pop()?.toLowerCase();
-    switch (ext) {
-      case 'pdf': return '';
-      case 'pptx': case 'ppt': return '';
-      case 'docx': case 'doc': return '';
-      case 'txt': return '';
-      case 'jpg': case 'jpeg': case 'png': case 'gif': return '';
-      case 'mp4': case 'avi': case 'mov': return '';
-      case 'mp3': case 'wav': return '';
-      default: return '';
     }
   }
 
@@ -263,10 +508,9 @@ async function handleViewFile(fileId, filename) {
       setError("Please select a group first");
       return;
     }
-    
+    setError("");
+    setMissingUserEmail("");
     try {
-      setError("");
-      setMissingUserEmail("");
       await addUserToGroupByEmail(selectedGroup.group_id, newUserEmail);
       setNewUserEmail("");
       await loadGroupUsers(selectedGroup.group_id);
@@ -286,9 +530,8 @@ async function handleViewFile(fileId, filename) {
       setError("Please select a group first");
       return;
     }
-    
+    setError("");
     try {
-      setError("");
       await removeUserFromGroup(selectedGroup.group_id, userId);
       await loadGroupUsers(selectedGroup.group_id);
     } catch (e) {
@@ -296,560 +539,270 @@ async function handleViewFile(fileId, filename) {
     }
   }
 
-  useEffect(() => {
-    loadGroups();
-  }, []);
-
-  useEffect(() => {
-    if (selectedGroup) {
-      loadGroupFiles(selectedGroup.group_id);
-      loadGroupUsers(selectedGroup.group_id);
+  async function handleDeleteGroup(groupId, groupName) {
+    if (!window.confirm(`Delete group "${groupName}"? This cannot be undone.`)) return;
+    try {
+      await deleteGroup(groupId);
+      await loadGroups();
+      if (selectedGroup?.group_id === groupId) setSelectedGroup(null);
+    } catch (e) {
+      setError(e.message || "Failed to delete group");
     }
-  }, [selectedGroup]);
+  }
 
-  // Responsive: stack columns on smaller widths
-  useEffect(() => {
-    function handleResize() {
-      try {
-        setIsSmall(window.innerWidth < 900);
-      } catch {}
-    }
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-
+  /* ----------------------
+     Render
+     ---------------------- */
 
   return (
-    <div style={{ display: "flex", gap: 20, height: "100%", flexDirection: isSmall ? "column" : "row" }}>
-      {/* Groups List */}
-      <div style={{ flex: 1, minWidth: isSmall ? "auto" : 300, display: isSmall && selectedGroup ? "none" : "block" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ margin: 0 }}>My Groups</h2>
-          {isAdmin && (
-            <button 
-              className="btn" 
-              onClick={() => setShowCreateGroup(true)}
-              style={baseBtnStyle}
-              {...interactiveButtonProps("#3b82f6", "#1e40af")}
-              title="Create Group"
-            >
-              <i class="bi bi-plus-lg"></i>
-            </button>
-          )}
-        </div>
+    <div
+      style={{
+        height: "calc(100vh - 60px)",
+        display: "flex",
+        flexDirection: isSmall ? "column" : "row",
+        overflow: "hidden",
+        background: "transparent",
+      }}
+    >
+{/* LEFT PANE — GROUP NAMES */}
+<div
+  style={{
+    width: isSmall ? "100%" : 320,
+    flexShrink: 0,
+    display: isSmall && selectedGroup ? "none" : "flex",
+    flexDirection: "column",
+    borderRight: isSmall ? "none" : "1px solid rgba(255,255,255,0.1)",
+    padding: 16,
+    overflowY: "auto",
+    scrollbarWidth: "thin",
+  }}
+>
 
-        {/* Suppressed transient banners */}
+  {/* 🔍 Search + ➕ Add Group */}
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      marginBottom: 12,
+    }}
+  >
+    <input
+      type="text"
+      placeholder="Search groups..."
+      value={searchTerm}
+      onChange={(e) => setSearchTerm(e.target.value)}
+      style={{
+        flex: 1,
+        padding: "8px 10px",
+        borderRadius: 6,
+         border: "1px solid #1e3a8a",
+        background: "rgba(255,255,255,0.1)",
+        color: "black",
+        outline: "none"
+      }}
+    />
 
-        {loading ? (
-          <div style={{ textAlign: "center", color: "#94a3b8" }}>Loading groups...</div>
-        ) : groups.length === 0 ? (
-          <div style={{ textAlign: "center", color: "#94a3b8" }}>
-            No groups yet. Create your first group!
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {groups.map((group) => (
-              <div
-                className="my-groups"
-                key={group.group_id}
-                onClick={() => setSelectedGroup(group)}
-                style={{
-                  padding: "12px 16px",
-                  border: "1px solid rgb(101, 112, 128)",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  background: selectedGroup?.group_id === group.group_id ? "#0a225e" : "transparent",
-                  transition: "background 0.2s",
-                  color: "white" 
-                }}
-              >
-                <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 , 
-                  color: selectedGroup?.group_id === group.group_id ? "white": "#0a225e"
-                  }}>
-                  {group.name}
-                </div>
-                {group.description && (
-                  <div style={{ fontSize: 14, color:"#5b6b9a"}}>
-                    {group.description}
-                  </div>
-                )}
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                  Created: {new Date(group.joined_at || Date.now()).toLocaleDateString()}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+    {isAdmin && (
+      <button
+        className="btn"
+        onClick={() => setShowCreateGroup(true)}
+        style={baseBtnStyle}
+        {...interactiveButtonProps("#3b82f6", "#1e40af")}
+        title="Create Group"
+      >
+        <i className="bi bi-plus-lg" />
+      </button>
+    )}
+  </div>
 
-      {/* Group Files */}
-      <div style={{ flex: isSmall ? 1 : 2 }}>
+  {/* 🔄 Loading / Empty / Group List */}
+  {loading ? (
+    <div style={{ textAlign: "center", color: "#94a3b8" }}>Loading groups...</div>
+  ) : groups.length === 0 ? (
+    <div style={{ textAlign: "center", color: "#94a3b8" }}>
+      No groups yet. Create your first group!
+    </div>
+  ) : (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {groups
+        .filter((g) =>
+          g.name.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .map((g) => (
+          <GroupListItem
+            key={g.group_id}
+            group={g}
+            selected={selectedGroup?.group_id === g.group_id}
+            onSelect={setSelectedGroup}
+          />
+        ))}
+    </div>
+  )}
+</div>
+
+
+      {/* RIGHT PANE — FILES/CHAT */}
+      
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {selectedGroup ? (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <>
+            {/* Header */}
+            <div
+              style={{
+                flexShrink: 0,
+                padding: "12px 16px",
+                borderBottom: "1px solid rgba(255,255,255,0.1)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "var(--primary)",
+              }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {isSmall && (
-                  <button className="btn" onClick={() => setSelectedGroup(null)} style={baseBtnStyle} {...interactiveButtonProps("#334155", "#1f2937")} title="Back">←</button>
+                  <button
+                    className="btn"
+                    onClick={() => setSelectedGroup(null)}
+                    style={baseBtnStyle}
+                    {...interactiveButtonProps("#334155", "#1f2937")}
+                    title="Back"
+                  >
+                    ←
+                  </button>
                 )}
-                <h2 style={{ margin: 0 }}>{selectedGroup.name} - Files</h2>
+                <h2 style={{ margin: 0, color: "white" }}>{selectedGroup.name} - Files</h2>
               </div>
+
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn" onClick={() => setShowUploadFile(true)} style={baseBtnStyle} {...interactiveButtonProps("#10b981", "#065f46")} title="Upload File">
-                  <i class="bi bi-cloud-arrow-up"></i>
+                <button
+                  className="btn"
+                  onClick={() => setShowUploadFile(true)}
+                  style={baseBtnStyle}
+                  {...interactiveButtonProps("#10b981", "#065f46")}
+                  title="Upload File"
+                >
+                  <i className="bi bi-cloud-arrow-up" />
                 </button>
+
                 {isAdmin && (
                   <>
-                    <button className="btn" onClick={() => setShowManageUsers(true)} style={baseBtnStyle} {...interactiveButtonProps("rgb(107, 106, 106)", "rgb(155, 155, 155)")} title="Manage Users">
-                      <i class="bi bi-people-fill"></i>
+                    <button
+                      className="btn"
+                      onClick={() => { setShowManageUsers(true); setMissingUserEmail(""); }}
+                      style={baseBtnStyle}
+                      {...interactiveButtonProps("#6b7280", "#4b5563")}
+                      title="Manage Users"
+                    >
+                      <i className="bi bi-people-fill" />
                     </button>
-                    <button className="btn" onClick={async () => { if (window.confirm(`Delete group \"${selectedGroup.name}\"? This cannot be undone.`)) { try { await deleteGroup(selectedGroup.group_id); await loadGroups(); setSelectedGroup(null); } catch (e) { setError(e.message); } } }} style={baseBtnStyle} {...interactiveButtonProps("#ef4444", "#b91c1c")} title="Delete Group">
-                      <i className="bi bi-trash3"></i>
+
+                    <button
+                      className="btn"
+                      onClick={() => handleDeleteGroup(selectedGroup.group_id, selectedGroup.name)}
+                      style={baseBtnStyle}
+                      {...interactiveButtonProps("#ef4444", "#b91c1c")}
+                      title="Delete Group"
+                    >
+                      <i className="bi bi-trash3" />
                     </button>
                   </>
                 )}
-                <button className="btn" onClick={() => loadGroupFiles(selectedGroup.group_id)} style={baseBtnStyle} {...interactiveButtonProps("#334155", "#1f2937")} title="Refresh">
-                  <i class="bi bi-arrow-clockwise"></i>
-                </button>
-              </div>
-            </div>
 
-            {groupFiles.length === 0 ? (
-              <div style={{ textAlign: "center", color: "white", marginTop: 32 }}>
-                No files in this group yet.
-              </div>
-            ) : (
-              <div style={{ display: isSmall ? "grid" : "flex", gridTemplateColumns: isSmall ? "repeat(auto-fit, minmax(260px, 1fr))" : undefined, flexDirection: isSmall ? undefined : "column", gap: 8 }}>
-                {groupFiles.map((file) => (
-                  <div
-                    key={file.id}
-                    style={{
-                      padding: "12px 16px",
-                      border: "1px solid #374151",
-                      borderRadius: 8,
-                      display: "flex",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: 12
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ fontSize: "24px" }}>{getFileIcon(file.original_filename)}</div>
-                      <div style={{ color: "white" }}>
-                        <div style={{ fontWeight: 600, fontSize: 16, color:"#6b7280" }}>
-                          {file.original_filename}
-                        </div>
-                        <div style={{ fontSize: 13, color: "#94a3b8" }}>
-                          Uploaded: {file.uploaded_at
-                            ? toIST(file.uploaded_at)
-                            : "Unknown"}
-                        </div>
-                        {file.uploader && (
-                          <div style={{ fontSize: 12, color: "#6b7280" }}>
-                            By: {file.uploader.username} ({file.uploader.email}, {file.uploader.role})
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                      <button
-                        className="btn"
-                        onClick={() => handleViewFile(file.id, file.original_filename)}
-                        style={baseBtnStyle}
-                        {...interactiveButtonProps("#3b82f6", "#1e40af")}
-                        title="View File"
-                      >
-                        <i class="bi bi-eye"></i>
-                      </button>
-                      <button
-                        className="btn"
-                        onClick={() => handleDownloadFile(file.id, file.original_filename)}
-                        style={baseBtnStyle}
-                        {...interactiveButtonProps("#10b981", "#065f46")}
-                        title="Download File"
-                      >
-                        <i class="bi bi-download"></i>
-                      </button>
-                      {/* Only show remove button if user is admin or uploaded the file */}
-                      {(isAdmin || (file.uploaded_by && file.uploaded_by === user?.user_id)) && (
-                        <button
-                          className="btn"
-                          onClick={() => handleRemoveFileFromGroup(file.id, selectedGroup.group_id)}
-                          style={baseBtnStyle}
-                          {...interactiveButtonProps("#ef4444", "#b91c1c")}
-                          title="Remove File"
-                        >
-                          <i className="bi bi-trash3"></i>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-
-          </div>
-        ) : (
-          <div style={{ textAlign: "center", color: "white", marginTop: 32 }}>
-            Select a group to view its files
-          </div>
-        )}
-      </div>
-
-      {/* Create Group Modal */}
-      {showCreateGroup && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000
-          }}
-          onClick={() => setShowCreateGroup(false)}
-        >
-          <div
-            style={{
-              background: "#1f2937",
-              padding: "24px",
-              borderRadius: "12px",
-              minWidth: "400px",
-              border: "1px solid #374151"
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: "0 0 16px 0" , color: "white"}}>Create New Group</h3>
-            
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 , color: "white"}}>
-                Group Name *
-              </label>
-              <input
-                type="text"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #374151",
-                  background: "#111827",
-                  color: "white"
-                }}
-                placeholder="Enter group name"
-              />
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 , color: "white"}}>
-                Description
-              </label>
-              <textarea
-                value={newGroupDescription}
-                onChange={(e) => setNewGroupDescription(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #374151",
-                  background: "#111827",
-                  color: "white",
-                  minHeight: "80px",
-                  resize: "vertical"
-                }}
-                placeholder="Enter group description (optional)"
-              />
-            </div>
-
-            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-              <button
-                className="btn"
-                onClick={() => setShowCreateGroup(false)}
-                style={{ background: "#6b7280" }}
-                title="Cancel"
-              >
-                <i class="bi bi-x"></i>
-              </button>
-              <button
-                className="btn"
-                onClick={handleCreateGroup}
-                style={{ background: "#3b82f6", color: "white" }}
-                title="Create Group"
-              >
-                <i class="bi bi-check2"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Upload File Modal */}
-      {showUploadFile && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000
-          }}
-          onClick={() => setShowUploadFile(false)}
-        >
-          <div
-            style={{
-              background: "#1f2937",
-              padding: "24px",
-              borderRadius: "12px",
-              minWidth: "400px",
-              border: "1px solid #374151"
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: "0 0 16px 0", color: "white" }}>Upload File to {selectedGroup?.name}</h3>
-            
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 500, color: "white" }}>
-                Select File *
-              </label>
-              <input
-                type="file"
-                onChange={(e) => setSelectedFile(e.target.files[0])}
-                accept=".pdf,.pptx,.docx,.txt,.jpg,.jpeg,.png,.gif,.mp4,.mp3,.wav,.avi,.mov"
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #374151",
-                  background: "#111827",
-                  color: "white"
-                }}
-              />
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
-                Supported formats: PDF, PPTX, DOCX, TXT, Images, Audio, Video
-              </div>
-            </div>
-
-            {selectedFile && (
-              <div style={{ marginBottom: 16, padding: "8px 12px", background: "#374151", borderRadius: "6px" }}>
-                <div style={{ fontWeight: 500 }}>Selected: {selectedFile.name}</div>
-                <div style={{ fontSize: 12, color: "#94a3b8" }}>
-                  Size: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-              <button
-                className="btn"
-                onClick={() => {
-                  setShowUploadFile(false);
-                  setSelectedFile(null);
-                }}
-                style={{ background: "#6b7280" }}
-                disabled={uploadingFile}
-                title="Cancel"
-              >
-                <i class="bi bi-x-lg"></i>
-              </button>
-              <button
-                className="btn"
-                onClick={handleFileUpload}
-                style={{ background: "#10b981", color: "white" }}
-                disabled={!selectedFile || uploadingFile}
-                title={uploadingFile ? "Uploading..." : "Upload & Add to Group"}
-              >
-                {uploadingFile ? <i class="bi bi-hourglass-split"></i> : <i class="bi bi-cloud-upload"></i>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Manage Users Modal */}
-      {showManageUsers && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000
-          }}
-          onClick={() => setShowManageUsers(false)}
-        >
-          <div
-            style={{
-              background: "#1f2937",
-              padding: "24px",
-              borderRadius: "12px",
-              width: "90%",
-              maxWidth: "720px",
-              border: "1px solid #374151",
-              maxHeight: "85vh",
-              overflowY: "auto"
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: "0 0 16px 0", color: "white" }}>Manage Users - {selectedGroup?.name}</h3>
-            
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 , color: "white" }}>
-                Add User by Email
-              </label>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input
-                  type="email"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
-                  style={{
-                    flex: "1 1 260px",
-                    padding: "8px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid #374151",
-                    background: "#111827",
-                    color: "white"
-                  }}
-                  placeholder="Enter user email"
-                />
                 <button
                   className="btn"
-                  onClick={handleAddUserToGroup}
-                  style={{ background: "#10b981", color: "white", flex: "1 10px" }}
-                  title="Add User"
+                  onClick={() => loadGroupFiles(selectedGroup.group_id)}
+                  style={baseBtnStyle}
+                  {...interactiveButtonProps("#334155", "#1f2937")}
+                  title="Refresh"
                 >
-                  <i class="bi bi-person-add"></i>
+                  <i className="bi bi-arrow-clockwise" />
                 </button>
               </div>
-              {missingUserEmail && (
-                <div style={{
-                  marginTop: 8,
-                  padding: "10px 12px",
-                  background: "#3f2a1d",
-                  border: "1px solid #b45309",
-                  color: "#fbbf24",
-                  borderRadius: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8
-                }}>
-                  <div>
-                    User "{missingUserEmail}" does not exist. Create the user in Admin, then try again.
-                  </div>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      try {
-                        const url = new URL(window.location.href);
-                        url.searchParams.set("tab", "admin");
-                        window.history.replaceState({}, "", url);
-                      } catch {}
-                      // Simple tab switch in TabsApp
-                      // If TabsApp isn't in URL mode yet, fallback to navigate
-                      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
-                      // Soft redirect by swapping hash (keeps SPA)
-                      try { window.location.hash = "#admin"; } catch {}
-                      // Hardest fallback: full reload to Admin tab
-                      setTimeout(() => {
-                        try {
-                          const u = new URL(window.location.href);
-                          u.searchParams.set("tab", "admin");
-                          window.location.href = u.toString();
-                        } catch {}
-                      }, 50);
-                    }}
-                    style={{ background: "#f59e0b", color: "#111827" }}
-                  >
-                    👤
-                  </button>
-                </div>
-              )}
             </div>
 
-            <div style={{ marginBottom: 24 }}>
-              <h4 style={{ margin: "0 0 12px 0" , color: "white" }}>Current Group Members</h4>
-              {groupUsers.length === 0 ? (
-                <div style={{ 
-                  padding: "12px", 
-                  background: "#374151", 
-                  borderRadius: "6px",
-                  minHeight: "100px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#94a3b8"
-                }}>
-                  No members in this group yet.
-                </div>
+            {/* Files area */}
+           
+            <div style={{ flex: 1, overflowY: "auto", padding: 16, scrollbarWidth: "thin" }}>
+              {groupFiles.length === 0 ? (
+                <div className="groups-empty">No files in this group yet.</div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "50vh", overflowY: "auto" }}>
-                  {groupUsers.map((user) => (
-                    <div
-                      key={user.user_id}
-                      style={{
-                        padding: "12px 16px",
-                        border: "1px solid #374151",
-                        borderRadius: 8,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 12,
-                        flexWrap: "wrap"
-                      }}
-                    >
-                      <div style={{ minWidth: 0, flex: "1 1 240px" }}>
-                        <div style={{color: "#ffffffff", fontWeight: 600, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {user.username}
-                        </div>
-                        <div style={{ fontSize: 13, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {user.email} • {user.role}
-                        </div>
-                        <div style={{ fontSize: 12, color: "#6b7280" }}>
-                          Joined: {user.joined_at ? new Date(user.joined_at).toLocaleDateString() : "Unknown"}
-                        </div>
-                      </div>
-                      <button
-                        className="btn"
-                        onClick={() => handleRemoveUserFromGroup(user.user_id)}
-                        style={{ background: "#ef4444", color: "white", flex: "0 0 auto" }}
-                        title="Remove User"
-                      >
-                        <i className="bi bi-trash3"></i>
-                      </button>
-                    </div>
+                <div className="chat-thread">
+                  {groupFiles.map((file) => (
+                    <FileCard
+                      key={file.id}
+                      file={file}
+                      currentUser={user}
+                      isAdmin={isAdmin}
+                      onView={handleViewFile}
+                      onDownload={handleDownloadFile}
+                      onDelete={(fileId) => handleRemoveFileFromGroup(fileId)}
+                    />
                   ))}
                 </div>
               )}
             </div>
+          </>
+        ) : (
+          <div
+  style={{
+   flex: 1,
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      textAlign: "center",
+      color: "#94a3b8",        // light grey
+      fontWeight: "600",       // bold
+      fontSize: "20px",
+      padding: "20px",
+      opacity: 0.9,
+  }}
+>
+  <div>Click a group to view its files</div>
+</div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button
-                className="btn"
-                onClick={() => setShowManageUsers(false)}
-                style={{ background: "#6b7280" }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        )}
+      </div>
+
+      {/* ---------- Modals ---------- */}
+
+      {showCreateGroup && (
+        <CreateGroupModal
+          name={newGroupName}
+          setName={setNewGroupName}
+          description={newGroupDescription}
+          setDescription={setNewGroupDescription}
+          onCreate={handleCreateGroup}
+          onCancel={() => { setShowCreateGroup(false); setError(""); }}
+          creating={creatingGroup}
+          error={error}
+        />
+      )}
+
+      {showUploadFile && (
+        <UploadFileModal
+          selectedFile={selectedFile}
+          setSelectedFile={setSelectedFile}
+          onUpload={handleFileUpload}
+          onCancel={() => { setShowUploadFile(false); setSelectedFile(null); setError(""); }}
+          uploading={uploadingFile}
+          error={error}
+        />
+      )}
+
+      {showManageUsers && (
+        <ManageUsersModal
+          groupUsers={groupUsers}
+          newUserEmail={newUserEmail}
+          setNewUserEmail={setNewUserEmail}
+          missingUserEmail={missingUserEmail}
+          onAddUser={handleAddUserToGroup}
+          onRemoveUser={handleRemoveUserFromGroup}
+          onClose={() => { setShowManageUsers(false); setError(""); setNewUserEmail(""); setMissingUserEmail(""); }}
+          error={error}
+          loadingUsers={loadingUsers}
+        />
       )}
     </div>
   );

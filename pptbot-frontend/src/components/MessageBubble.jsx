@@ -1,9 +1,25 @@
 // MessageBubble.jsx
 import React from "react";
  
-export default function MessageBubble({ role, content, references }) {
+export default function MessageBubble({ 
+  role, 
+  content, 
+  references, 
+  onReferenceClick // New prop for handling reference clicks
+}) {
   const isUser = role === "user";
  
+  const handleReferenceClick = (e, ref) => {
+    e.preventDefault();
+    if (ref.file_id) {
+      // If we have a file_id, use it to show the preview
+      onReferenceClick?.(ref.file_id, ref.page);
+    } else if (ref.url) {
+      // Fallback to URL if no file_id is available
+      window.open(ref.url, '_blank');
+    }
+  };
+
   return (
     <div style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start" }}>
       <div
@@ -24,30 +40,19 @@ export default function MessageBubble({ role, content, references }) {
             <b>References:</b>
             {references.map((ref, idx) => (
               <div key={idx}>
-                {ref.url ? (
-                  <a
-                    href={ref.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      color: "#2563eb",
-                      textDecoration: "underline",
-                      marginLeft: 4,
-                      fontWeight: 500,
-                    }}
-                    onClick={(e) => {
-                      // Prevent default for internal routes to avoid opening in new tab
-                      if (ref.url.startsWith('/')) {
-                        e.preventDefault();
-                        window.open(ref.url, '_blank');
-                      }
-                    }}
-                  >
-                    Page {ref.page}
-                  </a>
-                ) : (
-                  <>Page {ref.page}</>
-                )}
+                <span 
+                  onClick={(e) => handleReferenceClick(e, ref)}
+                  style={{
+                    color: "#2563eb",
+                    textDecoration: "underline",
+                    marginLeft: 4,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    display: 'inline-block'
+                  }}
+                >
+                  Page {ref.page}
+                </span>
                 : {ref.accuracy}% accuracy
               </div>
             ))}

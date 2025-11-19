@@ -11,6 +11,11 @@ import fitz  # PyMuPDF
 from pptx import Presentation
 import subprocess
 import tempfile
+import os
+
+# Define uploads directory for group files
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 router = APIRouter()
 
 # Only show user-uploaded files inside sessions (ignore slides/chunks)
@@ -76,17 +81,9 @@ def api_get_my_files():
 
 @router.get("/files/{file_id}")
 def get_file_by_id(file_id: str):
-    """Get file by file_id (format: session_id_filename)"""
+    """Get file by file_id (supports both session files and group files)"""
     try:
-        # Parse file_id to get session_id and filename
-        if "_" not in file_id:
-            raise HTTPException(status_code=400, detail="Invalid file_id format")
-        
-        session_id, filename = file_id.split("_", 1)
-        file_path = os.path.join(SESSIONS_DIR, session_id, filename)
-        
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="File not found")
+        file_path = _resolve_file_path_from_id(file_id)
         
         # Determine content type
         media_type, _ = mimetypes.guess_type(file_path)
@@ -99,28 +96,34 @@ def get_file_by_id(file_id: str):
             media_type=media_type,
             headers={"Content-Disposition": "inline"}
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving file: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/files/{file_id}/download")
 def download_file_by_id(file_id: str):
-    """Download file by file_id (format: session_id_filename)"""
+    """Download file by file_id (supports both session files and group files)"""
     try:
-        # Parse file_id to get session_id and filename
-        if "_" not in file_id:
-            raise HTTPException(status_code=400, detail="Invalid file_id format")
+        file_path = _resolve_file_path_from_id(file_id)
         
-        session_id, filename = file_id.split("_", 1)
-        file_path = os.path.join(SESSIONS_DIR, session_id, filename)
-        
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="File not found")
+        # Extract filename from file_id
+        if file_id.startswith("group_"):
+            # Group files: group_{uuid}_{filename}
+            parts = file_id.split("_", 2)
+            filename = parts[2] if len(parts) > 2 else "download"
+        else:
+            # Session files: session_id_filename
+            parts = file_id.split("_", 1)
+            filename = parts[1] if len(parts) > 1 else "download"
         
         return FileResponse(
             file_path, 
             media_type="application/octet-stream",
             filename=filename
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
 
@@ -137,12 +140,21 @@ def preview_session_file(session_id: str, filename: str):
 
 
 def _resolve_file_path_from_id(file_id: str) -> str:
+    # Handle group files (format: group_{uuid}_{filename})
+    if file_id.startswith("group_"):
+        # Group files are stored in uploads directory
+        file_path = os.path.join(UPLOADS_DIR, file_id)
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Group file not found")
+        return file_path
+    
+    # Handle session files (format: session_id_filename)
     if "_" not in file_id:
         raise HTTPException(status_code=400, detail="Invalid file_id format")
     session_id, filename = file_id.split("_", 1)
     file_path = os.path.join(SESSIONS_DIR, session_id, filename)
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=404, detail="Session file not found")
     return file_path
 
 @router.get("/files/{file_id}/as-pdf")

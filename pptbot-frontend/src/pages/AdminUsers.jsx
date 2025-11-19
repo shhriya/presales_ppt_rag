@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { listUsers, createUser, deleteUser } from "../api/api";
-
+import "../assets/App.css";
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [error, setError] = useState("");
@@ -47,7 +47,7 @@ export default function AdminUsers() {
   }
 
   return (
-    <div className="app">
+    <div className="admin-page">
       <div className="header">
         <h1>Admin - Users</h1>
         <p className="sub">
@@ -58,7 +58,7 @@ export default function AdminUsers() {
       {error && <div className="status" style={{ color: "red" }}>{error}</div>}
 
       {/* Form Panel */}
-      <div className="panel" style={{ marginBottom: 24 }}>
+      
         <div
           className="uploader"
           style={{
@@ -66,6 +66,7 @@ export default function AdminUsers() {
             flexWrap: "wrap",
             gap: "12px",
             justifyContent: "space-between",
+            marginBottom: 24,
           }}
         >
           <input
@@ -137,13 +138,12 @@ export default function AdminUsers() {
             Create
           </button>
         </div>
-      </div>
+      
 
       {/* Scrollable User List */}
       <div
         className="user-list"
         style={{
-          maxHeight: "400px", // 👈 limit height
           overflowY: "auto", // 👈 scroll enabled
           // paddingRight: "-10px",
           marginLeft: "20px",
@@ -153,11 +153,12 @@ export default function AdminUsers() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)", // 2 equal columns
+            gridTemplateColumns: "repeat(3, 1fr)", // 2 equal columns
             gap: "10px",
             width: "100%",
-            maxWidth: "900px",
+            maxWidth: "3000px",
             margin: "0 auto",
+      
           }}
         >
           {users.map((u) => (
@@ -172,9 +173,10 @@ export default function AdminUsers() {
                 borderRadius: "12px",
                 padding: "16px",
                 minHeight: "120px",
+                alignContent: "right",
               }}
             >
-              <div>
+              <div >
                 <div style={{ fontWeight: 600, color: "var(--text)" }}>
                   {u.username}{" "}
                   <span style={{ color: "var(--muted)" }}>• {u.role}</span>
