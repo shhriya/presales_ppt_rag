@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
 import "./Groups.css";
 import { useExtraction } from "../context/ExtractionContext";
+import FilePreviewModal from "./FilePreviewModal";
 import {
   listGroups,
   getGroupFiles,
@@ -180,18 +181,14 @@ function FileCard({ file, currentUser, isAdmin, onView, onDownload, onDelete }) 
     (file.uploader?.id && String(file.uploader.id) === String(currentUser?.user_id));
 
   const ext = (file.original_filename || "").split(".").pop()?.toLowerCase();
-  const icon = "📄"; // you can switch to icons later
+  const icon = "📄";
 
-  // Short pretty date
-  const dateObj = new Date(file.uploaded_at);
-  const prettyTime =
-    dateObj.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) +
-    " • " +
-    dateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  // Format time in IST
+  const prettyTime = toIST(file.uploaded_at);
 
   return (
     <div className="filecard-container">
-      <div className="filecard-left">
+      <div className="filecard-left" onClick={() => onView(file)}>
         <div className="filecard-icon">{icon}</div>
 
         <div className="filecard-info">
@@ -203,20 +200,29 @@ function FileCard({ file, currentUser, isAdmin, onView, onDownload, onDelete }) 
         </div>
       </div>
 
-      <div className="filecard-menu">
-        <div className="dropdown">
-          <button className="menu-btn">
-            <i className="bi bi-three-dots-vertical"></i>
+      <div className="filecard-actions">
+        <button 
+          className="action-btn view-btn" 
+          onClick={(e) => {
+            e.stopPropagation();
+            onView(file);
+          }}
+          title="Open file"
+        >
+          <i className="bi bi-box-arrow-up-right"></i>
+        </button>
+        {(isAdmin || isMine) && (
+          <button 
+            className="action-btn delete-btn" 
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(file);
+            }}
+            title="Delete file"
+          >
+            <i className="bi bi-trash"></i>
           </button>
-
-          <div className="dropdown-menu">
-            <div onClick={() => onView(file.id, file.original_filename)}>View</div>
-            <div onClick={() => onDownload(file.id, file.original_filename)}>Download</div>
-            {(isAdmin || isMine) && (
-              <div onClick={() => onDelete(file.id)} className="delete-option">Delete</div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -226,10 +232,8 @@ function FileCard({ file, currentUser, isAdmin, onView, onDownload, onDelete }) 
 /* Groups list item */
 function GroupListItem({ group, selected, onSelect }) {
   return (
-    
     <div
       className="my-groups"
-      
       style={{
         padding: "12px 14px",
         borderRadius: 8,
@@ -282,6 +286,10 @@ export default function Groups() {
   const [showUploadFile, setShowUploadFile] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+
+  // File preview modal state
+  const [previewFile, setPreviewFile] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const [showManageUsers, setShowManageUsers] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
@@ -409,14 +417,37 @@ export default function Groups() {
     }
   }
 
-  async function handleRemoveFileFromGroup(fileId) {
-    if (!selectedGroup) return;
-    setError("");
+  async function handleDeleteFile(file) {
+    if (!selectedGroup || !window.confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
+      return;
+    }
+    
+    setError('');
     try {
-      await removeFileFromGroup(fileId, selectedGroup.group_id);
+      // Remove file from the group
+      await removeFileFromGroup(file.id, selectedGroup.group_id);
+      
+      // Optionally, you can also delete the file completely from storage
+      // Uncomment the following if you want to delete the file completely
+      /*
+      const response = await fetch(`${BASE_URL}/files/${file.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to delete file');
+      }
+      */
+      
+      // Refresh the file list
       await loadGroupFiles(selectedGroup.group_id);
-    } catch (e) {
-      setError(e.message || "Failed to remove file from group");
+    } catch (error) {
+      console.error('Delete error:', error);
+      setError(error.message || 'Failed to delete file');
     }
   }
 
@@ -474,28 +505,38 @@ export default function Groups() {
     }
   }
 
-  function handleViewFile(fileId, filename) {
-     navigate(`/groups/file/${fileId}/${filename}`);
+  function handleViewFile(file) {
+    setPreviewFile({
+      id: file.id,
+      name: file.original_filename || file.filename || `file-${file.id}`,
+      type: file.file_type || file.content_type || ''
+    });
+    setShowPreview(true);
   }
 
-  async function handleDownloadFile(fileId, filename) {
+  async function handleDownloadFile(file) {
     try {
-      const response = await fetch(`${BASE_URL}/api/files/${fileId}/download`);
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
-        throw new Error("Download failed");
+      const fileId = file.id;
+      const filename = file.original_filename || file.filename || `file-${fileId}`;
+      
+      const response = await fetch(`${BASE_URL}/files/${fileId}/download`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Download failed');
       }
-    } catch (e) {
-      setError("Failed to download file");
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Download error:', error);
+      setError(error.message || 'Failed to download file');
     }
   }
 
@@ -735,9 +776,24 @@ export default function Groups() {
                       file={file}
                       currentUser={user}
                       isAdmin={isAdmin}
-                      onView={handleViewFile}
-                      onDownload={handleDownloadFile}
-                      onDelete={(fileId) => handleRemoveFileFromGroup(fileId)}
+                      onView={() => {
+                        setError('');
+                        handleViewFile(file);
+                      }}
+                      onDownload={() => {
+                        setError('');
+                        handleDownloadFile(file).catch(e => {
+                          console.error('Download error:', e);
+                          setError(e.message || 'Failed to download file');
+                        });
+                      }}
+                      onDelete={() => {
+                        setError('');
+                        handleDeleteFile(file).catch(e => {
+                          console.error('Delete error:', e);
+                          setError(e.message || 'Failed to delete file');
+                        });
+                      }}
                     />
                   ))}
                 </div>
@@ -802,6 +858,14 @@ export default function Groups() {
           onClose={() => { setShowManageUsers(false); setError(""); setNewUserEmail(""); setMissingUserEmail(""); }}
           error={error}
           loadingUsers={loadingUsers}
+        />
+      )}
+
+      {/* File Preview Modal */}
+      {showPreview && previewFile && (
+        <FilePreviewModal
+          fileId={previewFile.id}
+          onClose={() => setShowPreview(false)}
         />
       )}
     </div>
