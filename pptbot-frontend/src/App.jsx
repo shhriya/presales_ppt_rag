@@ -6,6 +6,8 @@ import FileViewer from "./pages/FileViewer.jsx";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import LogoutPage from "./context/LogoutPage.jsx";
 import ExtractionOverlay from "./components/ExtractionOverlay";
+import GroupsFileViewer from "./components/GroupsFileViewer";
+
 // ProtectedRoute wrapper
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth();
@@ -51,6 +53,14 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+           <Route
+             path="/groups/:groupId/file/:fileId/:filename"
+             element={
+               <ProtectedRoute>
+                 <GroupsFileViewer />
+               </ProtectedRoute>
+             }
+           />
 
           {/* Redirect unknown paths to login */}
           <Route path="*" element={<Navigate to="/login" replace />} />
