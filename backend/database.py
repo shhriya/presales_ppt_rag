@@ -1,11 +1,20 @@
 import os
+import json
 import mysql.connector
-import pymysql  # Add this import
-from sqlalchemy import create_engine, Column, String, Text, ForeignKey, Integer, DateTime, Boolean
+import pymysql
+from sqlalchemy import create_engine, Column, DECIMAL, String, Text, ForeignKey, Integer, DateTime, Boolean, JSON, TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import sessionmaker, relationship, scoped_session, Session
 from datetime import datetime
-
+import inspect
+# Import Base and metadata from base.py
+from .base import Base, metadata
+import logging
+logger = logging.getLogger(__name__)
+from math import isnan, isinf
+from sqlalchemy.dialects.mysql import LONGTEXT
+from sqlalchemy.types import JSON, Float
+ 
 # ============================================================
 # 🔹 MySQL Raw Connector (for direct queries if ever needed)
 # ============================================================
@@ -16,11 +25,11 @@ db_config = {
     "password": os.getenv("DB_PASS", "new_password"),        # Same as Workbench "Password"
     "database": os.getenv("DB_NAME", "pptbot"),      # Same as Workbench "Schema"
 }
-
+ 
 def get_db_connection():
     """Returns a raw MySQL connection using mysql.connector (Workbench-style login)"""
     return mysql.connector.connect(**db_config)
-
+ 
 # ============================================================
 # 🔹 SQLAlchemy ORM Setup
 # ============================================================
@@ -29,17 +38,40 @@ DB_PASS = db_config["password"]
 DB_HOST = db_config["host"]
 DB_PORT = db_config["port"]
 DB_NAME = db_config["database"]
-
-# ✅ Added port explicitly for Workbench-like connection
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-engine = create_engine(DATABASE_URL, echo=True, pool_pre_ping=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
+ 
+# Connection string for SQLAlchemy
+SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+ 
+# Create SQLAlchemy engine with connection pooling
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=300,
+    pool_size=5,
+    max_overflow=10
+)
+ 
+# Create scoped session factory
+SessionLocal =sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=engine,
+        expire_on_commit=False  # Prevent detached instance errors
+    )
+ 
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+ 
 # ============================================================
-# 🔹 ORM Models (unchanged)
+# 🔹 ORM Models
 # ============================================================
+# Import all models to ensure they are registered with SQLAlchemy
+ 
 class User(Base):
     __tablename__ = "users"
     user_id = Column(Integer, primary_key=True, index=True)
@@ -49,7 +81,33 @@ class User(Base):
     role = Column(String(50), default="employee")  # employee, developer, admin
     created_at = Column(DateTime, default=datetime.utcnow)
     user_groups = relationship("UserGroup", back_populates="user")
-
+    ragas_evaluations = relationship("RagasEvaluation", back_populates="user")
+ 
+# backend/models/ragas_config.py
+from sqlalchemy import Column, String, Integer, DateTime, JSON
+from sqlalchemy.sql import func
+from backend.database import Base
+from pydantic import BaseModel
+from typing import List
+ 
+class RagasConfigBody(BaseModel):
+    questions: List[str]
+    model: str
+    top_k: int
+ 
+ 
+class RagasConfig(Base):
+    __tablename__ = "ragas_config"
+ 
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(50), unique=True, nullable=False)
+    user_id = Column(Integer, nullable=True)
+    questions = Column(JSON, nullable=True)
+    model = Column(String(50), default="gpt-4o-mini")
+    top_k = Column(Integer, default=3)
+    file_name = Column(String(255), nullable=True)
+ 
+ 
 class Group(Base):
     __tablename__ = "groups"
     group_id = Column(Integer, primary_key=True, index=True)
@@ -59,7 +117,25 @@ class Group(Base):
     created_by = Column(Integer, ForeignKey("users.user_id"))
     user_groups = relationship("UserGroup", back_populates="group")
     file_groups = relationship("FileGroup", back_populates="group")
-
+ 
+ 
+class RagHistory(Base):
+    __tablename__ = "rag_history"
+ 
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String)
+    user_id = Column(String)
+    question = Column(String)
+ 
+    # Only the metrics we are keeping
+    faithfulness = Column(DECIMAL(10,8))
+    context_precision = Column(DECIMAL(10,8))
+    context_recall = Column(DECIMAL(10,8))
+    overall_score = Column(DECIMAL(10,8))
+    created_at = Column(TIMESTAMP, server_default=func.now())
+ 
+ 
+ 
 class UserGroup(Base):
     __tablename__ = "user_groups"
     id = Column(Integer, primary_key=True, index=True)
@@ -68,7 +144,7 @@ class UserGroup(Base):
     joined_at = Column(DateTime, default=datetime.utcnow)
     user = relationship("User", back_populates="user_groups")
     group = relationship("Group", back_populates="user_groups")
-
+ 
 class Session(Base):
     __tablename__ = "sessions"
     id = Column(String(255), primary_key=True, index=True)
@@ -79,7 +155,7 @@ class Session(Base):
     created_by = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
+ 
 class File(Base):
     __tablename__ = "files"
     id = Column(String(255), primary_key=True)
@@ -89,7 +165,7 @@ class File(Base):
     uploaded_by = Column(Integer, ForeignKey("users.user_id"))
     uploaded_at = Column(DateTime, default=datetime.utcnow)
     file_groups = relationship("FileGroup", back_populates="file")
-
+ 
 class FileGroup(Base):
     __tablename__ = "file_groups"
     id = Column(Integer, primary_key=True, index=True)
@@ -98,14 +174,8 @@ class FileGroup(Base):
     added_at = Column(DateTime, default=datetime.utcnow)
     file = relationship("File", back_populates="file_groups")
     group = relationship("Group", back_populates="file_groups")
-
-# ============================================================
-# 🔹 Init DB
-# ============================================================
-def init_db():
-    """Create tables if they don't exist"""
-    Base.metadata.create_all(bind=engine)
-
+ 
+ 
 # ============================================================
 # 🔹 Minimal helpers required by routers/upload.py
 # ============================================================
@@ -123,10 +193,9 @@ def ensure_session(session_id: str, user_id: int | None = None, session_name: st
             db.commit()
     finally:
         db.close()
-
-def save_chat_history(session_id: str, messages: list) -> None:
+ 
+def save_chat_history(db: Session, session_id: str, messages: list) -> None:
     """Save chat history to database."""
-    db = SessionLocal()
     try:
         session = db.query(Session).filter(Session.id == session_id).first()
         if session:
@@ -135,7 +204,7 @@ def save_chat_history(session_id: str, messages: list) -> None:
             db.commit()
     finally:
         db.close()
-
+ 
 def load_chat_history(session_id: str) -> list:
     """Load chat history from database."""
     db = SessionLocal()
@@ -147,7 +216,7 @@ def load_chat_history(session_id: str) -> list:
         return []
     finally:
         db.close()
-
+ 
 def register_file(session_id: str, original_filename: str, user_id: int | None = None, stored_filepath: str | None = None, session_path: str | None = None, slides_data: list | None = None) -> str:
     """Create a File record keyed by session_id + filename and return file_id."""
     db = SessionLocal()
@@ -165,11 +234,11 @@ def register_file(session_id: str, original_filename: str, user_id: int | None =
         return file_id
     finally:
         db.close()
-
+ 
 # ============================================================
 # 🔹 Group and User management helpers (required by routers/groups.py)
 # ============================================================
-
+ 
 def get_user_groups(user_id: int):
     """Get groups the user belongs to or created."""
     db = SessionLocal()
@@ -199,8 +268,8 @@ def get_user_groups(user_id: int):
         return groups
     finally:
         db.close()
-
-
+ 
+ 
 def get_group_files(group_id: int, user_id: int | None = None):
     """Get all files for a group. If user provided and not admin, ensure membership."""
     db = SessionLocal()
@@ -228,7 +297,7 @@ def get_group_files(group_id: int, user_id: int | None = None):
                             "username": uploader_user.username,
                             "email": uploader_user.email
                         }
-                
+               
                 results.append({
                     "id": f.id,
                     "original_filename": f.original_filename,
@@ -239,8 +308,8 @@ def get_group_files(group_id: int, user_id: int | None = None):
         return results
     finally:
         db.close()
-
-
+ 
+ 
 def create_group(name: str, description: str | None = None, created_by: int | None = None) -> int:
     db = SessionLocal()
     try:
@@ -255,8 +324,8 @@ def create_group(name: str, description: str | None = None, created_by: int | No
         return g.group_id
     finally:
         db.close()
-
-
+ 
+ 
 def add_user_to_group(user_id: int, group_id: int) -> None:
     db = SessionLocal()
     try:
@@ -266,8 +335,8 @@ def add_user_to_group(user_id: int, group_id: int) -> None:
             db.commit()
     finally:
         db.close()
-
-
+ 
+ 
 def remove_user_from_group(user_id: int, group_id: int) -> None:
     db = SessionLocal()
     try:
@@ -275,8 +344,8 @@ def remove_user_from_group(user_id: int, group_id: int) -> None:
         db.commit()
     finally:
         db.close()
-
-
+ 
+ 
 def get_all_groups():
     db = SessionLocal()
     try:
@@ -292,8 +361,8 @@ def get_all_groups():
         return results
     finally:
         db.close()
-
-
+ 
+ 
 def add_file_to_group(file_id: str, group_id: int) -> None:
     db = SessionLocal()
     try:
@@ -302,8 +371,8 @@ def add_file_to_group(file_id: str, group_id: int) -> None:
             db.commit()
     finally:
         db.close()
-
-
+ 
+ 
 def remove_file_from_group(file_id: str, group_id: int) -> None:
     db = SessionLocal()
     try:
@@ -311,8 +380,8 @@ def remove_file_from_group(file_id: str, group_id: int) -> None:
         db.commit()
     finally:
         db.close()
-
-
+ 
+ 
 def get_user_files(user_id: int):
     """Files accessible to user. If user_id==0 or admin, return all files."""
     db = SessionLocal()
@@ -347,8 +416,8 @@ def get_user_files(user_id: int):
         return results
     finally:
         db.close()
-
-
+ 
+ 
 def get_group_users(group_id: int):
     db = SessionLocal()
     try:
@@ -367,8 +436,8 @@ def get_group_users(group_id: int):
         return results
     finally:
         db.close()
-
-
+ 
+ 
 def get_user_id_by_email(email: str):
     db = SessionLocal()
     try:
@@ -376,8 +445,8 @@ def get_user_id_by_email(email: str):
         return u.user_id if u else None
     finally:
         db.close()
-
-
+ 
+ 
 def get_or_create_user_by_email(email: str) -> int:
     db = SessionLocal()
     try:
@@ -393,8 +462,8 @@ def get_or_create_user_by_email(email: str) -> int:
         return nu.user_id
     finally:
         db.close()
-
-
+ 
+ 
 def delete_group(group_id: int) -> None:
     db = SessionLocal()
     try:
@@ -404,8 +473,8 @@ def delete_group(group_id: int) -> None:
         db.commit()
     finally:
         db.close()
-
-
+ 
+ 
 def create_user(username: str, email: str, password: str, role: str = "employee") -> int:
     """Create a new user account."""
     db = SessionLocal()
@@ -414,7 +483,7 @@ def create_user(username: str, email: str, password: str, role: str = "employee"
         existing = db.query(User).filter(User.email == email).first()
         if existing:
             raise ValueError("User with this email already exists")
-
+ 
         # Create new user
         new_user = User(
             username=username,
@@ -428,7 +497,7 @@ def create_user(username: str, email: str, password: str, role: str = "employee"
         return new_user.user_id
     finally:
         db.close()
-
+ 
 def leave_group(user_id: int, group_id: int) -> None:
     """Remove user from a group."""
     db = SessionLocal()
@@ -437,8 +506,6 @@ def leave_group(user_id: int, group_id: int) -> None:
         db.commit()
     finally:
         db.close()
-
-# ============================================================
-# 🔹 Auto-init on import
-# ============================================================
-init_db()
+ 
+ 
+ 

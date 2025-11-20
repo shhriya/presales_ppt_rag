@@ -1,14 +1,15 @@
- 
 import { useState, useEffect } from "react";
 import "../assets/style.css";
-import { uploadFile, askQuestion, listMySessions, deleteSession, getSessionChatHistory } from "../api/api.js";
+import { uploadFile, askQuestion, listMySessions, deleteSession, getSessionChatHistory, BASE_URL } from "../api/api.js";
 import Chat from "../components/Chat";
 import UserMenu from "../components/UserMenu.jsx";
+import FilePreviewModal from "../components/FilePreviewModal";
 import Groups from "../components/Groups.jsx";
 import Chunks from "../components/Chunks";
 import { useAuth } from "../context/AuthContext.jsx";
 import AdminUsers from "./AdminUsers.jsx";
 import { useExtraction } from "../context/ExtractionContext";
+import RagasEvaluation from "../components/RagasEvaluation.jsx";
  
 // Helper to convert UTC date string to IST and format
 function toIST(dateString) {
@@ -41,6 +42,8 @@ export default function TabsApp() {
   const [activeTab, setActiveTab] = useState("chat"); // chat, groups, chunks, admin
   const [sessions, setSessions] = useState([]);
   const [sessionMessages, setSessionMessages] = useState({}); // sessionId -> messages array
+  const [currentFileId, setCurrentFileId] = useState(null);
+  const [currentView, setCurrentView] = useState('chat'); // 'chat' or 'file'
   const { extracting, setExtracting } = useExtraction();
  
   // Initialize tab from URL (?tab=groups/admin/...) and keep URL updated
@@ -140,7 +143,7 @@ export default function TabsApp() {
   useEffect(() => {
     refreshSessions();
   }, [user]);
-
+ 
   // Auto-switch to previously selected session when sessions are loaded
   useEffect(() => {
     if (sessions.length > 0 && sessionId && user?.user_id) {
@@ -194,7 +197,7 @@ export default function TabsApp() {
     setSlides(session.items_count || 0);  // Set slides count from session data
     setCurrentFilename(session.last_file?.original_filename || "");
     try { localStorage.setItem("chat_session_id", session.session_id); } catch {}
-   
+ 
     // Load chat history from database
     if (user?.user_id) {
       try {
@@ -246,12 +249,12 @@ export default function TabsApp() {
     console.log("[handleSend] Current slides:", slides);
     console.log("[handleSend] Current currentFilename:", currentFilename);
     console.log("[handleSend] isIndexing:", isIndexing);
-
+ 
     if (!sessionId) {
       setError("Please upload a file first to start a session.");
       return;
     }
-
+ 
     // Check if session is ready (not indexing and has slides)
     if (isIndexing || slides === 0) {
       // If we have a sessionId but slides is 0, check if the session actually has content
@@ -270,7 +273,7 @@ export default function TabsApp() {
         return;
       }
     }
-
+ 
     setError("");
     const next = [...messages, { role: "user", content: question }];
     setMessages(next); setIsAsking(true);
@@ -280,8 +283,9 @@ export default function TabsApp() {
       console.log("[handleSend] askQuestion response:", res);
       const answer = res.answer;
       const references = res.references || [];
+      const ragasMetrics = res.ragas_metrics || {};
       // Append answer with references
-      const finalMessages = [...next, { role: "assistant", content: answer , references }];
+      const finalMessages = [...next, { role: "assistant", content: answer , references,metrics:ragasMetrics }];
       setMessages(finalMessages);
       // Update session messages
       setSessionMessages(prev => ({ ...prev, [sessionId]: finalMessages }));
@@ -298,8 +302,8 @@ export default function TabsApp() {
   }
  
   const visibleTabs = {
-    admin: ["chat", "groups", "chunks", "admin"],
-    developer: ["chat", "groups", "chunks"],
+    admin: ["chat", "groups", "chunks", "admin", "ragas"],
+    developer: ["chat", "groups", "chunks", "ragas"],
     employee: ["chat", "groups"],
     client: ["chat", "groups"]
   };
@@ -319,7 +323,6 @@ export default function TabsApp() {
         </div>
       </div>
  
- 
       {/* Tabs */}
       <div className="tabs" >
         {tabsToShow.includes("chat") && (
@@ -334,100 +337,167 @@ export default function TabsApp() {
         {tabsToShow.includes("admin") && (
           <button className={`tab-btn ${activeTab === "admin" ? "active" : ""}`} onClick={() => setActiveTabAndUrl("admin")}>Admin</button>
         )}
+        {tabsToShow.includes("admin") && (
+          <button className={`tab-btn ${activeTab === "ragas" ? "active" : ""}`} onClick={() => setActiveTabAndUrl("ragas")}>Ragas</button>
+        )}
       </div>
  
       {/* Panels */}
       {activeTab === "chat" && tabsToShow.includes("chat") && (
-        <div className="chat-layout">
+        <div className="chat-layout" style={{flex: 1,minHeight: 0,overflow: 'hidden', height: 'calc(100vh - 160px)'}}>
           <div className="sidebar">
-            <div className="panel" style={{ padding: 12 }}>
+            <div className="panel" style={{ padding: 12, display: "flex", flexDirection: "column", flex: 1, minHeight: 0,overflow: 'hidden'}}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <div style={{ fontWeight: 600 }}>My Sessions</div>
-                <button
-                  className="btn"
-                  onClick={createNewSession}
-                  style={{ padding: "6px 10px", fontSize: 12 }}
-                >
-                  + New
-                </button>
+                <button className="btn" onClick={createNewSession} style={{ padding: "6px 10px", fontSize: 12 }}>+ New</button>
               </div>
-              <div className="list">
+              <div className="list" style={{flex: 1,minHeight: 0,overflowY: 'auto'}}>
                 {sessions.map(s => (
                   <div key={s.session_id} className="sidebar-item">
-                    <button
-                      className="btn"
-                      onClick={() => switchToSession(s)}
-                      style={{
-                        flex: 1,
-                        textAlign: "left",
-                        background: s.session_id === sessionId ? "var(--primary)" : "#fff",
-                        color: s.session_id === sessionId ? "#fff" : "var(--text)",
-                        border: s.session_id === sessionId ? "1px solid var(--primary)" : "1px solid var(--border)",
-                        padding: "8px"
-                      }}
-                    >
+                    <button className="btn" onClick={() => switchToSession(s)} style={{flex: 1, textAlign: "left", background: s.session_id === sessionId ? "var(--primary)" : "#fff",color: s.session_id === sessionId ? "#fff" : "var(--text)"}}>
                       <div style={{ fontWeight: 600 }}>{s.name || s.last_file?.original_filename || s.session_id}</div>
                       <div style={{ fontSize: 12, opacity: 0.8 }}>
                         Updated: {s.last_file?.uploaded_at
-                          ? toIST(s.last_file.uploaded_at)
-                          : (s.created_at ? toIST(s.created_at) : "")}
+                        ? toIST(s.last_file.uploaded_at)
+                        : (s.created_at ? toIST(s.created_at) : "")}
                       </div>
                     </button>
-                    <button
-                      className="btn"
-                      onClick={() => handleDeleteSession(s.session_id)}
-                      style={{
-                        padding: "6px 8px",
-                        fontSize: 12,
-                        minWidth: "auto"
-                      }}
-                      title="Delete session"
-                    >
-                      <i className="bi bi-trash3"></i>
-                    </button>
-                  </div>
-                ))}
-                {sessions.length === 0 && (
-                  <div style={{ textAlign: "center", color: "#6b7280", fontSize: 14, padding: 20 }}>
-                    No sessions yet. Upload a file to get started!
-                  </div>
-                )}
+              <button
+                className="btn"
+                onClick={() => handleDeleteSession(s.session_id)}
+                style={{
+                  padding: "6px 8px",
+                  fontSize: 12,
+                  minWidth: "auto"
+                }}
+                title="Delete session"
+              >
+                <i className="bi bi-trash3"></i>
+              </button>
+            </div>
+          ))}
+          {sessions.length === 0 && (
+            <div style={{ textAlign: "center", color: "#6b7280", fontSize: 14, padding: 20 }}>
+              No sessions yet. Upload a file to get started!
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+ 
+    <div style={{
+        flex: 1,
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0
+      }}>
+ 
+      {!sessionId && messages.length === 0 ? (
+        <div className="panel" style={{ marginBottom: 12 }}>
+          <div className="uploader">
+            <input type="file" onChange={(e) => setFile(e.target.files?.[0])} />
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button className="btn" onClick={handleUpload} disabled={isIndexing}>
+                {isIndexing ? "Indexing..." : "Upload & Index"}
+              </button>
+              <div className="status">
+                {isIndexing ? "Extracting slides, OCR, building FAISS..." : "No session yet"}
               </div>
             </div>
-          </div>
- 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="panel" style={{ marginBottom: 12 }}>
-              <div className="uploader">
-                <input type="file" onChange={(e) => setFile(e.target.files?.[0])} />
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button className="btn" onClick={handleUpload} disabled={isIndexing}>
-                    {isIndexing ? "Indexing..." : "Upload & Index"}
-                  </button>
-                  <div className="status">
-                    {sessionId && !isIndexing ? `Ready (slides: ${slides})${currentFilename ? ` • Current: ${currentFilename}` : ""}` :
-                    isIndexing ? "Extracting slides, OCR, building FAISS..." :
-                    "No session yet"}
-                  </div>
-                </div>
-                {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
-              </div>
-            </div>
- 
-            <div className="panel">
-              <Chat
-                messages={messages}
-                isAsking={isAsking}
-                disabled={!sessionId || isIndexing || isAsking}
-                onSend={handleSend}
-              />
-            </div>
+            {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
           </div>
         </div>
+      ) : (
+          <div className="panel" style={{ padding:6,marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
+              <div style={{ fontWeight: 600 }}>Current file:</div>
+              <div style={{ color: "var(--text)" }}>{currentFilename || "(unknown)"}</div>
+              <div style={{ color: "var(--muted)", fontSize: 13 }}>• Slides: {slides || 0}</div>
+            </div>
+              {(() => {
+                const current = sessions.find(s => s.session_id === sessionId);
+                const fid = current?.last_file?.id || current?.last_file_id;
+                if (!fid) return null;
+                return (
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      setCurrentFileId(fid);
+                      setCurrentView('file');
+                    }}
+                    style={{
+                      textDecoration: 'none',
+                      padding: '6px 16px',
+                      cursor: 'pointer',
+                      backgroundColor: currentView === 'file' ? '#1e40af' : '#2563eb',
+                      color: 'white',
+                      borderRadius: '4px',
+                      border: '1px solid #1e40af',
+                      fontWeight: '500',
+                      fontSize: '14px',
+                      transition: 'all 0.2s ease',
+                      ':hover': {
+                        backgroundColor: '#ea580c',
+                        borderColor: '#c2410c'
+                      }
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = '#ea580c';
+                      e.currentTarget.style.borderColor = '#c2410c';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = currentView === 'file' ? '#1e40af' : '#2563eb';
+                      e.currentTarget.style.borderColor = '#1e40af';
+                    }}
+                  >
+                    {currentView === 'file' ? 'Viewing File' : 'Open File'}
+                  </button>
+                );
+              })()}
+              </div>
+           )}
+            <div className="chat-container" style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+              position: 'relative',
+              backgroundColor: '#fff',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              overflow: 'hidden'
+            }}>
+              <Chat
+                messages={sessionMessages[sessionId] || []}
+                disabled={!sessionId}
+                onSend={handleSend}
+                currentFileId={currentView === 'file' ? currentFileId : null}
+                isAsking={isAsking}
+                onReferenceClick={(fileId, page) => {
+                  if (fileId) {
+                    setCurrentFileId(fileId);
+                    setCurrentView('file');
+                  } else {
+                    setCurrentView('chat');
+                  }
+                }}
+              />
+            </div>
+            </div>
+            </div>
       )}
- 
+     
       {activeTab === "groups" && tabsToShow.includes("groups") && (
-        <div className="panel">
+        <div
+          style={{
+            flex: 1,
+            height: "calc(100vh - 160px)", // below header + tabs
+            overflow: "hidden", // don't scroll here
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           <Groups />
         </div>
       )}
@@ -443,8 +513,13 @@ export default function TabsApp() {
           <AdminUsers />
         </div>
       )}
+ 
+      {activeTab === "ragas" && tabsToShow.includes("ragas") && (
+        <div className="panel">
+            <RagasEvaluation />
+        </div>
+      )}
     </div>
   );
+ 
 }
- 
- 

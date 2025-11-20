@@ -1,14 +1,53 @@
-# # main.py
- 
- 
+# # main.py--original
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Form, File, UploadFile, Response, Header
 from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import auth, upload, sessions, files, ask, groups, users, file_serve
-from backend.database import add_file_to_group
+from backend.database import add_file_to_group, SessionLocal, engine
 from backend.routers.upload import process_upload_file, process_group_upload_file
- 
 from pathlib import Path
 from dotenv import load_dotenv
+import logging
+from backend.routers.ragas import router as ragas_router
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+app = FastAPI()
+ 
+@app.on_event("startup")
+async def startup_event():
+    print("Starting application...")
+ 
+    # 1. Load JSON data
+    await load_json_data()
+ 
+    # 2. Initialize DB tables
+    await init_db()
+ 
+    # 3. Load any cache
+    await load_cache()
+ 
+@app.on_event("shutdown")
+async def shutdown_event():
+    print("Shutting down gracefully...")
+    await close_db()
+ 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting application...")
+   
+    # Create database tables if they don't exist
+    from backend.database import Base
+    Base.metadata.create_all(bind=engine)
+   
+    yield
+   
+    # Shutdown
+    logger.info("Shutting down application...")
+    SessionLocal.close_all()
+    logger.info("Application shutdown complete")
  
 # Load .env
 try:
@@ -18,7 +57,7 @@ try:
 except Exception as e:
     print(f"[main] Warning: could not load .env: {e}")
  
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
  
 # ✅ Enable CORS for both 3000 and 3001
 app.add_middleware(
@@ -78,5 +117,4 @@ app.include_router(ask.router)
 app.include_router(groups.router)
 app.include_router(users.router)
 app.include_router(file_serve.router)
- 
- 
+app.include_router(ragas_router, prefix="/api/ragas")

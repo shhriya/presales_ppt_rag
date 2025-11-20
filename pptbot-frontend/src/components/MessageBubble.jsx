@@ -15,46 +15,46 @@ export default function MessageBubble({
       // If we have a file_id, use it to show the preview
       onReferenceClick?.(ref.file_id, ref.page);
     } else if (ref.url) {
-      // Fallback to URL if no file_id is available
-      window.open(ref.url, '_blank');
+      // Extract file_id from URL patterns like "/files/{file_id}?page={page_num}"
+      try {
+        const url = new URL(ref.url, window.location.origin);
+        const pathParts = url.pathname.split('/');
+        const fileIndex = pathParts.indexOf('files');
+        if (fileIndex !== -1 && pathParts[fileIndex + 1]) {
+          const fileId = pathParts[fileIndex + 1];
+          onReferenceClick?.(fileId, ref.page);
+        } else {
+          // Fallback for other URL patterns
+          const match = ref.url.match(/files\/([^\/\?]+)/);
+          if (match && match[1]) {
+            onReferenceClick?.(match[1], ref.page);
+          } else {
+            console.warn('Could not extract file_id from reference URL:', ref.url);
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing reference URL:', ref.url, error);
+      }
     }
   };
 
   return (
-    <div style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start" }}>
-      <div
-        className={`message ${isUser ? "user" : "bot"}`}
-        style={{
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          marginBottom: 12,
-          maxWidth: "80%",
-          lineHeight: 1.5,
-        }}
-      >
+    <div className={`message-wrapper ${isUser ? "user" : "bot"}`}>
+      <div className={`message ${isUser ? "user" : "bot"}`}>
         {content}
  
         {/* Show references only for bot messages */}
         {!isUser && references && references.length > 0 && (
-          <div style={{ marginTop: 8, fontSize: 13, color: "#0a225e" }}>
-            <b>References:</b>
+          <div className="message-references">
+            <div className="references-title">References:</div>
             {references.map((ref, idx) => (
-              <div key={idx}>
-                <span 
-                  onClick={(e) => handleReferenceClick(e, ref)}
-                  style={{
-                    color: "#2563eb",
-                    textDecoration: "underline",
-                    marginLeft: 4,
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    display: 'inline-block'
-                  }}
-                >
-                  Page {ref.page}
-                </span>
-                : {ref.accuracy}% accuracy
-              </div>
+              <span
+                key={idx}
+                className="reference-item"
+                onClick={(e) => handleReferenceClick(e, ref)}
+              >
+                Page {ref.page}
+              </span>
             ))}
           </div>
         )}
