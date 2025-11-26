@@ -27,6 +27,8 @@ def list_session_files(sessions_dir):
     import json
     files = []
     for sid in os.listdir(sessions_dir):
+        if sid == "0000000000":
+            continue
         session_path = os.path.join(sessions_dir, sid)
         if not os.path.isdir(session_path):
             continue

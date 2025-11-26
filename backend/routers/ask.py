@@ -140,7 +140,7 @@ New question: {body.question}
 
    
     # Save updated chat history to database
-    save_chat_history(body.session_id, updated_history)
+    save_chat_history(db,body.session_id, updated_history)
    
     # Update in-memory session for backward compatibility
     s["last_q"] = body.question

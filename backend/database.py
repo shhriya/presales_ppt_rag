@@ -22,7 +22,7 @@ db_config = {
     "host": os.getenv("DB_HOST", "127.0.0.1"),       # Same as Workbench "Hostname"
     "port": int(os.getenv("DB_PORT", "3306")),       # Same as Workbench "Port"
     "user": os.getenv("DB_USER", "root"),            # Same as Workbench "Username"
-    "password": os.getenv("DB_PASS", "new_password"),        # Same as Workbench "Password"
+    "password": os.getenv("DB_PASS", "pass"),        # Same as Workbench "Password"
     "database": os.getenv("DB_NAME", "pptbot"),      # Same as Workbench "Schema"
 }
  

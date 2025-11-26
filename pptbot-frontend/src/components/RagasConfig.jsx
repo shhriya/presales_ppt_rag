@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
  
-const BASE = "http://127.0.0.1:8000";
+const BASE = "http://127.0.0.1:9000";
  
 export default function RagasConfig() {
   const navigate = useNavigate();
@@ -561,5 +561,3 @@ export default function RagasConfig() {
     </div>
   );
 }
- 
- 

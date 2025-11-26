@@ -9,7 +9,7 @@ class RAGASEvaluator:
     RAGAS evaluator for local testing with version 0.3.9.
     """
  
-    def __init__(self, model_name: str = "gpt-3.5-turbo"):
+    def __init__(self, model_name: str = "gpt-4o-mini"):
         print("🚀 Initializing RAGAS evaluator...")
         # Only pass model_name, no other kwargs
         self.llm = llm_factory(model_name)
@@ -78,12 +78,21 @@ class RAGASEvaluator:
             print(f"[ERROR] Parsing scores: {e}")
  
         return scores
- 
+
+import math
+
+def safe_float(value):
+    if value is None:
+        return None
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    return float(value)
+
 async def run_ragas_metrics(question: str, answer: str, contexts: list[str]):
     print("\n[run_ragas_metrics] Starting evaluation...")
  
     try:
-        evaluator = RAGASEvaluator(model_name="gpt-3.5-turbo")
+        evaluator = RAGASEvaluator(model_name="gpt-4o-mini")
  
         scores = evaluator.run_metrics(
             question=question,
@@ -97,11 +106,12 @@ async def run_ragas_metrics(question: str, answer: str, contexts: list[str]):
  
         # Now scores is a dict, safe to use .get()
         clean_scores = {
-            "faithfulness": scores.get("faithfulness") or scores.get("faithfulness_score"),
-            "context_precision": scores.get("context_precision") or scores.get("context_precision_score"),
-            "context_recall": scores.get("context_recall") or scores.get("context_recall_score"),
+            "faithfulness": safe_float(scores.get("faithfulness")),
+            "context_precision": safe_float(scores.get("context_precision")),
+            "context_recall": safe_float(scores.get("context_recall")),
             "overall_score": None
         }
+
  
         print("[run_ragas_metrics] Final cleaned scores:", clean_scores)
         return clean_scores

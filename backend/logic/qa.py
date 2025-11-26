@@ -1,15 +1,15 @@
-# backend\logic\qa.py - working for pdf and pptx
-from importlib import metadata
-from pydoc import text
+# backend/logic/qa.py — Fully rewritten for OpenAI (PDF/PPTX RAG)
 import re
 import logging
 import numpy as np
 import difflib
 from collections import defaultdict
-from .config import GEMINI_CHAT_MODEL, GEMINI_EMBED_MODEL, genai
+from openai import OpenAI
+from .config import OPENAI_CHAT_MODEL, OPENAI_EMBED_MODEL
 from .faiss_index import build_faiss_index
 import tiktoken
 
+client = OpenAI()
 logger = logging.getLogger(__name__)
 
 # --------------------------
@@ -40,76 +40,82 @@ def _get_refnum_from_meta(meta):
             continue
         try:
             return int(v)
-        except Exception:
+        except:
             try:
                 return int(str(v).strip())
-            except Exception:
+            except:
                 continue
-    # fallback based on filetype
+    # fallback
     filetype = str(meta.get("filetype", "")).lower()
     if filetype in ("image", "img", "jpg", "jpeg", "png", "doc", "docx", "txt"):
         return 1
     return None
 
 # --------------------------
-# Gemini utilities
+# OpenAI utilities
 # --------------------------
 def compute_embedding(text):
-    """Compute embedding using Gemini."""
+    """Compute embedding using OpenAI."""
     try:
-        resp = genai.embed_content(
-            model=GEMINI_EMBED_MODEL,
-            content=text,
-            task_type="retrieval_document"
+        emb = client.embeddings.create(
+            model=OPENAI_EMBED_MODEL,
+            input=text
         )
-        return np.array(resp["embedding"], dtype=np.float32)
+        return np.array(emb.data[0].embedding, dtype=np.float32)
     except Exception:
-        logger.exception("Gemini embedding failed")
+        logger.exception("OpenAI embedding failed")
         return np.zeros(1536, dtype=np.float32)
 
-def gemini_chat(prompt):
-    """Call Gemini model for response."""
+def openai_chat(prompt):
+    """Generate chat answer using OpenAI."""
     try:
-        model = genai.GenerativeModel(GEMINI_CHAT_MODEL)
-        response = model.generate_content(prompt)
-        if hasattr(response, "text"):
-            return response.text
-        if isinstance(response, dict) and "candidates" in response:
-            return response["candidates"][0].get("content", "")
-        return str(response)
+        response = client.chat.completions.create(
+            model=OPENAI_CHAT_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a helpful file-analysis assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2
+        )
+
+        return response.choices[0].message.content
     except Exception:
-        logger.exception("Gemini chat failed")
+        logger.exception("OpenAI chat failed")
         return "Sorry, I'm having trouble answering that question right now."
+
 
 # --------------------------
 # Main QA function
 # --------------------------
 def search_and_answer(query, index, texts, metadata):
     """
-    Retrieve and answer a user query using Gemini + FAISS.
-    Works for PPTX, PDF, DOCX, etc.
+    Retrieve and answer a user query using OpenAI + FAISS.
+    Supports PPTX, PDF, DOCX, etc.
     """
     print("RAW USER QUERY:", query)
 
+    # Extract “New question:”
     try:
         match_new = re.search(r"New question:\s*(.+)", query, re.IGNORECASE | re.DOTALL)
         actual_question = match_new.group(1).strip() if match_new else query.strip()
-    except Exception:
+    except:
         actual_question = query.strip()
 
     if not index or not texts:
-        return {"text": "Sorry, I don't have data to answer that yet. Upload a file first.", "references": []}
+        return {"text": "Please upload a file first so I can answer your questions.", "references": []}
 
-    # Check if this is a fallback session (no FAISS index)
+    # Retrieval
     is_fallback = index is None
     retrieved = []
+
     try:
-        # detect "page X" or "slide X"
+        # Detect page/slide number requests
         match = re.search(r"(?:page|slide)\s+(\d+)", actual_question.lower())
         if match:
             ref_num = int(match.group(1))
             retrieved = [
-                texts[i] for i, meta in enumerate(metadata or [])
+                texts[i]
+                for i, meta in enumerate(metadata or [])
                 if (
                     (str(meta.get("slide", "")) == str(ref_num)) or
                     (str(meta.get("page", "")) == str(ref_num))
@@ -119,46 +125,47 @@ def search_and_answer(query, index, texts, metadata):
                 retrieved = texts[:min(3, len(texts))]
         else:
             if is_fallback:
-                # Fallback mode: simple text search
-                query_lower = actual_question.lower()
-                scored_texts = []
-                for i, text in enumerate(texts):
-                    score = 0
-                    # Simple keyword matching for fallback
-                    text_lower = text.lower()
-                    query_words = set(_tokenize(query_lower))
-                    text_words = set(_tokenize(text_lower))
+                # Fallback: keyword matching
+                query_words = set(_tokenize(actual_question.lower()))
+                scored = []
+
+                for i, t in enumerate(texts):
+                    text_words = set(_tokenize(t.lower()))
                     score = len(query_words & text_words) / max(len(query_words), 1)
+                    scored.append((score, t, i))
 
-                    scored_texts.append((score, text, i))
-
-                # Sort by relevance score and take top 3
-                scored_texts.sort(key=lambda x: x[0], reverse=True)
-                retrieved = [text for _, text, _ in scored_texts[:3] if text]
-                if not retrieved:
-                    retrieved = texts[:min(3, len(texts))]
+                scored.sort(key=lambda x: x[0], reverse=True)
+                retrieved = [t for _, t, _ in scored[:3]] or texts[:3]
             else:
-                # embedding retrieval
+                # FAISS vector search
                 query_emb = compute_embedding(actual_question)
                 D, I = index.search(np.array([query_emb], dtype="float32"), 3)
                 ids = [int(i) for i in I[0] if 0 <= int(i) < len(texts)]
-                seen, valid_ids = set(), []
+
+                seen = set()
+                valid = []
                 for i in ids:
                     if i not in seen:
-                        valid_ids.append(i)
+                        valid.append(i)
                         seen.add(i)
-                retrieved = [texts[i] for i in valid_ids] or texts[:min(3, len(texts))]
+
+                retrieved = [texts[i] for i in valid] or texts[:min(3, len(texts))]
     except Exception:
-        logger.exception("Retrieval step failed")
+        logger.exception("Retrieval failed, returning fallback chunks")
         retrieved = texts[:min(3, len(texts))]
 
-    # ---------------- Build Prompt ----------------
+    # -------------------------
+    # Build Prompt
+    # -------------------------
     try:
         MAX_CONTEXT = 8192
         encoding = tiktoken.encoding_for_model("gpt-4o-mini")
 
+        # Token count
         query_tokens = len(encoding.encode(query))
-        joined_chunks, current_len = [], query_tokens
+        joined_chunks = []
+        current_len = query_tokens
+
         for chunk in retrieved:
             chunk_tokens = len(encoding.encode(chunk))
             if current_len + chunk_tokens > MAX_CONTEXT:
@@ -169,112 +176,85 @@ def search_and_answer(query, index, texts, metadata):
             joined_chunks.append(chunk)
             current_len += chunk_tokens
 
-        joined = "\n\n".join(joined_chunks)
+        context_text = "\n\n".join(joined_chunks)
+
         prompt = f"""
-You are an assistant helping the user understand their uploaded file.
+You are analyzing content from a file the user uploaded.
 
-File Content:
-{joined}
+=== File Content ===
+{context_text}
 
-User Question:
+=== User Question ===
 {query}
 
-Guidelines:
-1. Answer based strictly on the content above.
-2. Provide comprehensive, detailed explanations with specific examples and context.
-3. Be thorough and informative - explain concepts fully and provide complete details.
-4. Include relevant quotes or excerpts from the content when helpful.
-5. Structure your answer clearly with sections if appropriate.
-6. Do NOT mention file quality or limitations.
-7. If the question is unclear, answer with the most logical interpretation based on the content.
-Answer:
+Instructions:
+• Answer ONLY using the content above.
+• Be detailed, clear, and precise.
+• Provide examples, explanations, and clarity.
+• If unclear, answer with the most logical interpretation.
 """
-        print("FINAL PROMPT TO GEMINI:", prompt[:700], "..." if len(prompt) > 700 else "")
+
     except Exception:
-        logger.exception("Prompt construction failed")
-        return {"text": "I couldn't build a response. Try again later.", "references": []}
+        logger.exception("Prompt build failed")
+        return {"text": "I couldn't build the answer prompt.", "references": []}
 
-    # ---------------- Gemini Chat ----------------
-    text = gemini_chat(prompt)
+    # -------------------------
+    # Generate Answer via OpenAI
+    # -------------------------
+    answer = openai_chat(prompt)
 
-    # ---------------- Reference Calculation Based on Content Relevance ----------------
+    # -------------------------
+    # Reference Extraction
+    # -------------------------
     references = []
 
-    if text and text.strip():
-        # Calculate relevance scores combining question and answer
+    if answer and answer.strip():
         question_tokens = set(_tokenize(actual_question))
-        answer_tokens = set(_tokenize(text))
+        answer_tokens = set(_tokenize(answer))
 
-        # Create a mapping of chunks to their metadata for more accurate reference generation
         chunk_relevance = defaultdict(float)
         page_relevance = defaultdict(float)
 
         for idx, (chunk, meta) in enumerate(zip(texts, metadata or [])):
-            chunk_tokens = set(_tokenize(chunk))
+            words = set(_tokenize(chunk))
 
-            # Calculate relevance score combining question and answer
-            question_overlap = len(question_tokens & chunk_tokens) / max(len(question_tokens), 1)
-            answer_overlap = len(answer_tokens & chunk_tokens) / max(len(answer_tokens), 1)
+            q_overlap = len(question_tokens & words) / max(len(question_tokens), 1)
+            a_overlap = len(answer_tokens & words) / max(len(answer_tokens), 1)
 
-            # Weight answer relevance more heavily (70% answer, 30% question)
-            relevance_score = (0.7 * answer_overlap) + (0.3 * question_overlap)
+            relevance = 0.3 * q_overlap + 0.7 * a_overlap
 
-            if relevance_score > 0.05:  # Lower threshold for more inclusive matching
+            if relevance > 0.05:
                 refnum = _get_refnum_from_meta(meta) or 1
-                page_relevance[refnum] += relevance_score
-                chunk_relevance[idx] = relevance_score
+                page_relevance[refnum] += relevance
+                chunk_relevance[idx] = relevance
 
-        # Sort pages by total relevance
+        # Top 3
         sorted_pages = sorted(page_relevance.items(), key=lambda x: x[1], reverse=True)
+        top = sorted_pages[:3]
 
-        # Take top 3 most relevant pages
-        max_refs = min(3, len(sorted_pages))
+        for page_num, total_rel in top:
+            best_idx = None
+            best_score = 0
 
-        for page_num, total_relevance in sorted_pages[:max_refs]:
-            if total_relevance > 0.1:  # Only include significantly relevant pages
-                # Find the best chunk for this page to get file_id
-                best_chunk_idx = None
-                best_chunk_relevance = 0
+            for idx, meta in enumerate(metadata or []):
+                if (_get_refnum_from_meta(meta) or 1) == page_num:
+                    if chunk_relevance.get(idx, 0) > best_score:
+                        best_score = chunk_relevance[idx]
+                        best_idx = idx
 
-                for idx, meta in enumerate(metadata or []):
-                    meta_refnum = _get_refnum_from_meta(meta) or 1
-                    if meta_refnum == page_num and chunk_relevance.get(idx, 0) > best_chunk_relevance:
-                        best_chunk_relevance = chunk_relevance.get(idx, 0)
-                        best_chunk_idx = idx
+            file_id = None
+            if best_idx is not None:
+                file_id = metadata[best_idx].get("file_id")
 
-                ref_url = None
-                if best_chunk_idx is not None and metadata:
-                    fid = metadata[best_chunk_idx].get("file_id")
-                    if fid:
-                        ref_url = f"/files/{fid}?page={page_num}"
+            url = f"/files/{file_id}?page={page_num}" if file_id else f"/files/placeholder?page={page_num}"
 
-                if not ref_url:
-                    ref_url = f"/files/placeholder?page={page_num}"
+            references.append({
+                "page": page_num,
+                "accuracy": round(100 * (total_rel / sum(r for _, r in top)), 1) if top else 100,
+                "url": url
+            })
 
-                references.append({
-                    "page": page_num,
-                    "accuracy": round((total_relevance / sum(r for _, r in sorted_pages[:max_refs])) * 100, 1) if sorted_pages[:max_refs] else 100.0,
-                    "url": ref_url
-                })
-
-        # Ensure at least 1 reference if we have content
-        if not references and page_relevance:
-            best_page = max(page_relevance.items(), key=lambda x: x[1])
-            if best_page[1] > 0:
-                ref_url = None
-                for i, m in enumerate(metadata or []):
-                    rnum = _get_refnum_from_meta(m)
-                    if rnum == best_page[0]:
-                        fid = m.get("file_id")
-                        if fid:
-                            ref_url = f"/files/{fid}?page={best_page[0]}"
-                            break
-                if not ref_url:
-                    ref_url = f"/files/placeholder?page={best_page[0]}"
-
-                references.append({"page": best_page[0], "accuracy": 100.0, "url": ref_url})
-
-    return {"text": text or "I couldn't generate an answer this time.", "references": references}
-
-
-
+    return {
+        "text": answer or "I couldn’t generate an answer this time.",
+        "references": references
+    }

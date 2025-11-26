@@ -17,8 +17,11 @@ def list_sessions():
     sessions = []
     ignore_exts = {".json", ".index"}
     ignore_files = {"slides.json", "chunks.json"}
+    default_session = "0000000000"
  
     for sid in os.listdir(SESSIONS_DIR):
+        if sid == default_session:
+            continue
         session_path = os.path.join(SESSIONS_DIR, sid)
         if not os.path.isdir(session_path):
             continue
@@ -147,6 +150,8 @@ def my_sessions(x_user_id: int | None = Query(default=None), x_user_role: str | 
  
         # Build response for the visible sessions
         for sid in visible_session_ids:
+            if sid == "0000000000":
+                continue
             s = db.query(DBSession).filter(DBSession.id == sid).first()
             if not s:
                 continue
