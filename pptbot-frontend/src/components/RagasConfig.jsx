@@ -10,7 +10,7 @@ export default function RagasConfig() {
   const { user } = useAuth();
  
   // STATES
-  const [sessionId, setSessionId] = useState("");
+  const sessionId = "0000000000";
   const [questions, setQuestions] = useState([""]);
   const [file, setFile] = useState(null);
   const [filePreview, setFilePreview] = useState("");
@@ -21,31 +21,6 @@ export default function RagasConfig() {
   const [error, setError] = useState(null);
   const [showQuestionsModal, setShowQuestionsModal] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
- 
-  // Get or create session ID
-  const getOrCreateSessionId = useCallback(() => {
-    // Try to get from URL first
-    const urlParams = new URLSearchParams(location.search);
-    let sessionId = urlParams.get('session_id');
-   
-    // If not in URL, try to get from localStorage
-    if (!sessionId) {
-      sessionId = localStorage.getItem('current_ragas_session');
-    }
-   
-    // If still no session ID, generate a new one
-    if (!sessionId) {
-      sessionId = `ragas_${Date.now()}`;
-      // Update URL with the new session ID
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.set('session_id', sessionId);
-      window.history.replaceState({}, '', newUrl);
-    }
-   
-    // Save to localStorage for persistence
-    localStorage.setItem('current_ragas_session', sessionId);
-    return sessionId;
-  }, [location.search]);
  
   // Load configuration from server
   const loadConfigFromServer = useCallback(async (sessionId) => {
@@ -88,7 +63,7 @@ export default function RagasConfig() {
        
         if (config.file_name) {
           setFilePreview(config.file_name);
-          setFileUrl(`${BASE}/api/files/${encodeURIComponent(config.file_name)}`);
+          setFileUrl(`${BASE}/files/${sessionId}_${encodeURIComponent(config.file_name)}`);
         }
       }
      
@@ -109,8 +84,7 @@ export default function RagasConfig() {
     const initialize = async () => {
       try {
         // Get or create session ID
-        const currentSessionId = getOrCreateSessionId();
-        setSessionId(currentSessionId);
+        const currentSessionId = sessionId;
        
         // Load config from server
         await loadConfigFromServer(currentSessionId);
@@ -125,7 +99,7 @@ export default function RagasConfig() {
     };
    
     initialize();
-  }, [getOrCreateSessionId, loadConfigFromServer, isInitialized]);
+  }, [loadConfigFromServer, isInitialized]);
  
   // Load config on component mount and when session changes
   useEffect(() => {
