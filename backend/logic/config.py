@@ -4,7 +4,12 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 
 # ===== ENV =====
-load_dotenv()
+from pathlib import Path
+config_dir = Path(__file__).parent
+backend_dir = config_dir.parent
+env_path = backend_dir / ".env"
+load_dotenv(dotenv_path=env_path)
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
@@ -33,5 +38,5 @@ if not GEMINI_API_KEY:
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Default text + embedding models
-GEMINI_CHAT_MODEL = "models/gemini-2.5-pro"
-GEMINI_EMBED_MODEL = "models/text-embedding-004"
+GEMINI_CHAT_MODEL = "models/gemini-flash-latest"
+GEMINI_EMBED_MODEL = "models/gemini-embedding-001"

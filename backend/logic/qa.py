@@ -187,6 +187,7 @@ Guidelines:
 5. Structure your answer clearly with sections if appropriate.
 6. Do NOT mention file quality or limitations.
 7. If the question is unclear, answer with the most logical interpretation based on the content.
+8. If the question details is not in the file mention it and just give a small overview.
 Answer:
 """
         print("FINAL PROMPT TO GEMINI:", prompt[:700], "..." if len(prompt) > 700 else "")
