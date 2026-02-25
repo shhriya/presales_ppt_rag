@@ -1,6 +1,6 @@
 import os
 import json
-import mysql.connector
+# import mysql.connector
 import pymysql
 from sqlalchemy import create_engine, Column, DECIMAL, String, Text, ForeignKey, Integer, DateTime, Boolean, JSON, TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
@@ -21,9 +21,9 @@ from sqlalchemy.types import JSON, Float
 db_config = {
     "host": os.getenv("DB_HOST", "127.0.0.1"),       # Same as Workbench "Hostname"
     "port": int(os.getenv("DB_PORT", "3306")),       # Same as Workbench "Port"
-    "user": os.getenv("DB_USER", "root"),            # Same as Workbench "Username"
-    "password": os.getenv("DB_PASS", "new_password"),        # Same as Workbench "Password"
-    "database": os.getenv("DB_NAME", "pptbot"),      # Same as Workbench "Schema"
+    "user": os.getenv("DB_USER", ""),            # Same as Workbench "Username"
+    "password": os.getenv("DB_PASS", ""),        # Same as Workbench "Password"
+    "database": os.getenv("DB_NAME", ""),      # Same as Workbench "Schema"
 }
  
 def get_db_connection():
@@ -43,13 +43,15 @@ DB_NAME = db_config["database"]
 SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
  
 # Create SQLAlchemy engine with connection pooling
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=300,
-    pool_size=5,
-    max_overflow=10
-)
+# engine = create_engine(
+#     SQLALCHEMY_DATABASE_URL,
+#     pool_pre_ping=True,
+#     pool_recycle=300,
+#     pool_size=5,
+#     max_overflow=10
+# )
+DATABASE_URL = "sqlite:///./app.db"
+engine = create_engine(DATABASE_URL)
  
 # Create scoped session factory
 SessionLocal =sessionmaker(
@@ -508,4 +510,31 @@ def leave_group(user_id: int, group_id: int) -> None:
         db.close()
  
  
+def create_admin_user() -> int:
+    """
+    Insert default admin user if not exists.
+    Returns user_id of the admin.
+    """
+    db = SessionLocal()
+    try:
+        # Check if admin already exists
+        existing_admin = db.query(User).filter(User.email == "admin@company.com").first()
+        if existing_admin:
+            return existing_admin.user_id
  
+        # Create admin user
+        admin_user = User(
+            username="Admin User",
+            email="admin@company.com",
+            password_hash="admin123",  # ⚠️ In production, hash this!
+            role="admin"
+        )
+ 
+        db.add(admin_user)
+        db.commit()
+        db.refresh(admin_user)
+ 
+        return admin_user.user_id
+ 
+    finally:
+        db.close()
