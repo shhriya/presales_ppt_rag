@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { BASE_URL } from '../api/api';
 import './FilePreviewModal.css';
 
-export default function FilePreviewModal({ fileId, onClose }) {
+export default function FilePreviewModal({ fileId, onClose, initialPage }) {
   const [url, setUrl] = useState("");
   const [type, setType] = useState("");
   const [error, setError] = useState("");
@@ -14,6 +14,8 @@ export default function FilePreviewModal({ fileId, onClose }) {
 
   const [convertingToPdf, setConvertingToPdf] = useState(false);
   const [conversionError, setConversionError] = useState(null);
+  const [cachedPdfUrl, setCachedPdfUrl] = useState(null);
+  const [currentLoadedFileId, setCurrentLoadedFileId] = useState(null);
 
   // Function to handle PDF conversion for Office docs
   const convertToPdf = async (fileId, fileName) => {
@@ -52,7 +54,7 @@ export default function FilePreviewModal({ fileId, onClose }) {
 
   useEffect(() => {
     let isMounted = true;
-    let objectUrl = null;
+    const pageNum = initialPage || 1;
 
     async function init() {
       if (!fileId) {
@@ -62,76 +64,94 @@ export default function FilePreviewModal({ fileId, onClose }) {
       }
 
       try {
-        setIsLoading(true);
-        setError("");
-        
-        // Extract filename from fileId if it contains the original filename
+        // If fileId changed, reset cache
+        if (fileId !== currentLoadedFileId) {
+          setIsLoading(true);
+          setError("");
+
+          if (cachedPdfUrl) {
+            URL.revokeObjectURL(cachedPdfUrl);
+            setCachedPdfUrl(null);
+          }
+        }
+
         const fileNameFromId = fileId.split('_').pop();
         setFileName(fileNameFromId);
-        
-        // Get file extension
         const fileExt = fileNameFromId.split('.').pop()?.toLowerCase() || '';
         setType(fileExt);
 
-        // Build the appropriate URL based on file type
         let previewUrl = `${BASE_URL}/files/${fileId}`;
-        
+
         if (fileExt === 'pdf') {
-          // For PDFs, we can use the built-in browser PDF viewer
-          previewUrl += `#page=1&t=${Date.now()}`; // Add timestamp to prevent caching
-          setUrl(previewUrl);
+          // Add timestamp for base but page hash for navigation
+          const finalUrl = `${previewUrl}?t=${Date.now()}#page=${pageNum}`;
+          setUrl(finalUrl);
+          setCurrentLoadedFileId(fileId);
+          setIsLoading(false);
         } else if (['pptx', 'ppt', 'docx', 'doc'].includes(fileExt)) {
-          // For Office docs, convert to PDF first
-          const pdfUrl = await convertToPdf(fileId, fileNameFromId);
-          if (pdfUrl && isMounted) {
-            setUrl(pdfUrl);
-          } else if (isMounted) {
-            // If conversion fails, fall back to direct download
-            setUrl(previewUrl);
-            setError(conversionError || 'Preview not available. Please download the file to view it.');
+          // If already converted this file, just update the page hash
+          if (fileId === currentLoadedFileId && cachedPdfUrl) {
+            setUrl(`${cachedPdfUrl}#page=${pageNum}`);
+            setIsLoading(false);
+          } else {
+            setIsLoading(true);
+            const pdfUrl = await convertToPdf(fileId, fileNameFromId);
+            if (pdfUrl && isMounted) {
+              setCachedPdfUrl(pdfUrl);
+              setCurrentLoadedFileId(fileId);
+              setUrl(`${pdfUrl}#page=${pageNum}`);
+            } else if (isMounted) {
+              setUrl(previewUrl);
+              setError(conversionError || 'Preview not available.');
+            }
+            setIsLoading(false);
           }
         } else {
-          // For other file types, use direct URL
           setUrl(`${previewUrl}?t=${Date.now()}`);
+          setCurrentLoadedFileId(fileId);
+          setIsLoading(false);
         }
       } catch (e) {
         console.error("Error loading file:", e);
         if (isMounted) {
-          setError(`Failed to load file: ${e.message || 'Unknown error'}`);
-        }
-      } finally {
-        if (isMounted) {
+          setError(`Failed to load file: ${e.message}`);
           setIsLoading(false);
         }
       }
     }
-    
+
     init();
 
-    // Cleanup function
     return () => {
       isMounted = false;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
+    };
+  }, [fileId, initialPage]);
+
+  // Clean up blob URL only on unmount
+  useEffect(() => {
+    return () => {
+      if (cachedPdfUrl) {
+        URL.revokeObjectURL(cachedPdfUrl);
       }
     };
-  }, [fileId]);
+  }, []);
+
 
   const handleDownload = () => {
     if (!fileId) {
       setError("No file ID available for download");
       return;
     }
-    
+
     // Create a temporary link element
     const link = document.createElement('a');
     const downloadUrl = `${BASE_URL}/files/${fileId}/download`;
-    
+
     // Set the download attribute with a filename if available
     if (fileName) {
       link.download = fileName;
     }
-    
+
     link.href = downloadUrl;
     link.target = '_blank';
     document.body.appendChild(link);
@@ -151,7 +171,7 @@ export default function FilePreviewModal({ fileId, onClose }) {
 
   // File type detection with fallbacks
   const fileType = type.toLowerCase();
-  
+
   // Supported file type groups
   const fileTypes = {
     image: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "tiff", "tif", "ico", "heic", "heif"],
@@ -172,26 +192,26 @@ export default function FilePreviewModal({ fileId, onClose }) {
   const isAudio = fileTypes.audio.includes(fileType);
   const isVideo = fileTypes.video.includes(fileType);
   const isArchive = fileTypes.archive.includes(fileType);
-  
+
   // Get the appropriate viewer URL based on file type
   const getViewerUrl = (fileId, fileExt) => {
     const baseUrl = `${BASE_URL}/files/${fileId}`;
-    
+
     // For Office files, use the PDF conversion endpoint if available
     if (fileTypes.office.includes(fileExt)) {
       return `${baseUrl}/as-pdf`;
     }
-    
+
     // For text and code files, add a timestamp to prevent caching issues
     if ([...fileTypes.text, ...fileTypes.code].includes(fileExt)) {
       return `${baseUrl}?t=${Date.now()}`;
     }
-    
+
     // For PDFs, add page parameter
     if (fileExt === 'pdf') {
       return `${baseUrl}#page=1`;
     }
-    
+
     // For all other files, return the direct URL
     return baseUrl;
   };
@@ -205,11 +225,11 @@ export default function FilePreviewModal({ fileId, onClose }) {
       padding: document.body.style.padding,
       overflow: document.body.style.overflow,
     };
-    
+
     document.body.style.margin = '0';
     document.body.style.padding = '0';
     document.body.style.overflow = 'hidden';
-    
+
     return () => {
       // Restore original styles when component unmounts
       document.body.style.margin = originalStyles.margin;
@@ -221,21 +241,21 @@ export default function FilePreviewModal({ fileId, onClose }) {
   return (
     <div className="file-preview-modal">
       <div className="file-preview-header">
-        <button 
+        <button
           className="back-button"
           onClick={handleBack}
         >
           <i className="bi bi-arrow-left"></i> Back to Chat
         </button>
         <div className="file-title">{fileName || 'File Preview'}</div>
-        <button 
-          className="download-button" 
+        <button
+          className="download-button"
           onClick={handleDownload}
         >
           <i className="bi bi-download"></i> Download
         </button>
       </div>
-      
+
       <div className="file-preview-content">
         {isLoading ? (
           <div className="loading-indicator" style={{
@@ -280,10 +300,10 @@ export default function FilePreviewModal({ fileId, onClose }) {
             {error}
           </div>
         ) : (
-          <div style={{ 
-            width: '100%', 
-            height: '100%', 
-            display: 'flex', 
+          <div style={{
+            width: '100%',
+            height: '100%',
+            display: 'flex',
             justifyContent: 'center',
             alignItems: 'flex-start'
           }}>
@@ -296,9 +316,9 @@ export default function FilePreviewModal({ fileId, onClose }) {
                 height: '100%',
                 padding: '20px'
               }}>
-                <img 
-                  src={`${url}?t=${Date.now()}`} 
-                  alt={fileName || 'Image preview'} 
+                <img
+                  src={`${url}?t=${Date.now()}`}
+                  alt={fileName || 'Image preview'}
                   style={{
                     maxWidth: '100%',
                     maxHeight: 'calc(100vh - 120px)',
@@ -311,11 +331,11 @@ export default function FilePreviewModal({ fileId, onClose }) {
                   onError={(e) => {
                     console.error('Image load error:', e);
                     setError("Unable to display this image. The file may be corrupted or in an unsupported format.");
-                  }} 
+                  }}
                 />
               </div>
             )}
-            
+
             {(isPdf || isOffice) && (
               <div style={{
                 width: '100%',
@@ -392,6 +412,7 @@ export default function FilePreviewModal({ fileId, onClose }) {
                     flexDirection: 'column'
                   }}>
                     <iframe
+                      key={url}
                       title={`${fileName} - Document Preview`}
                       src={url}
                       style={{
@@ -409,7 +430,7 @@ export default function FilePreviewModal({ fileId, onClose }) {
                 )}
               </div>
             )}
-            
+
             {isTextLike && (
               <div style={{
                 width: '100%',
@@ -459,7 +480,7 @@ export default function FilePreviewModal({ fileId, onClose }) {
                 </pre>
               </div>
             )}
-            
+
             {isAudio && (
               <div style={{
                 width: '100%',
@@ -469,9 +490,9 @@ export default function FilePreviewModal({ fileId, onClose }) {
                 borderRadius: '8px',
                 boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
               }}>
-                <audio 
-                  controls 
-                  src={url} 
+                <audio
+                  controls
+                  src={url}
                   style={{
                     width: '100%',
                     outline: 'none'
@@ -482,11 +503,11 @@ export default function FilePreviewModal({ fileId, onClose }) {
                 </audio>
               </div>
             )}
-            
+
             {isVideo && (
-              <video 
-                controls 
-                src={url} 
+              <video
+                controls
+                src={url}
                 style={{
                   maxWidth: '100%',
                   maxHeight: 'calc(100vh - 100px)',
@@ -498,7 +519,7 @@ export default function FilePreviewModal({ fileId, onClose }) {
                 Your browser does not support the video element.
               </video>
             )}
-            
+
             {!isImage && !isPdf && !isOffice && !isTextLike && !isAudio && !isVideo && (
               <div style={{
                 padding: '32px',
@@ -531,11 +552,11 @@ export default function FilePreviewModal({ fileId, onClose }) {
                   }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginTop: '1px' }}>
-                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/>
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor" />
                   </svg>
                   Back to Chat
                 </button>
-                <button 
+                <button
                   onClick={handleDownload}
                   style={{
                     background: '#2563eb',
@@ -551,8 +572,8 @@ export default function FilePreviewModal({ fileId, onClose }) {
                   }}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 16L7 11L8.41 9.58L11 12.17V4H13V12.17L15.59 9.58L17 11L12 16Z" fill="currentColor"/>
-                    <path d="M20 18H4V20H20V18Z" fill="currentColor"/>
+                    <path d="M12 16L7 11L8.41 9.58L11 12.17V4H13V12.17L15.59 9.58L17 11L12 16Z" fill="currentColor" />
+                    <path d="M20 18H4V20H20V18Z" fill="currentColor" />
                   </svg>
                   Download File
                 </button>

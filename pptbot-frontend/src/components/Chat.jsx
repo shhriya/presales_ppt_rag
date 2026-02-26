@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import MessageBubble from "./MessageBubble";
 import FilePreviewModal from "./FilePreviewModal";
 
-export default function Chat({ messages, disabled, onSend, isAsking, currentFileId, onReferenceClick }) {
+export default function Chat({ messages, disabled, onSend, isAsking, currentFileId, currentPage, onReferenceClick }) {
   const [input, setInput] = useState("");
   const listRef = useRef(null);
   const textRef = useRef(null);
@@ -27,11 +27,11 @@ export default function Chat({ messages, disabled, onSend, isAsking, currentFile
   }
 
   useEffect(() => {
-  const list = listRef.current;
-  if (list) {
-    list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
-  }
-}, [messages]);
+    const list = listRef.current;
+    if (list) {
+      list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+    }
+  }, [messages]);
 
 
   function handleKeyDown(e) {
@@ -46,19 +46,20 @@ export default function Chat({ messages, disabled, onSend, isAsking, currentFile
       {/* scrollable chat area */}
       <div className="chat-list" ref={listRef}>
         {messages.map((m, i) => (
-            <MessageBubble 
-              key={i} 
-              role={m.role} 
-              content={m.content} 
-              references={m.references} 
-              currentFileId={currentFileId}
-              onReferenceClick={onReferenceClick}
-            />
-          ))
+          <MessageBubble
+            key={i}
+            role={m.role}
+            content={m.content}
+            references={m.references}
+            currentFileId={currentFileId}
+            onReferenceClick={onReferenceClick}
+          />
+        ))
         }
         {currentFileId && (
-          <FilePreviewModal 
+          <FilePreviewModal
             fileId={currentFileId}
+            initialPage={currentPage}
             onClose={() => onReferenceClick(null)}
           />
         )}

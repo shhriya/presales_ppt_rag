@@ -107,7 +107,7 @@ def clean_text_df(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
     df = df.replace(r"[|\]\[\}\{I™]+", "", regex=True)
-    df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+    df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
     df = df.dropna(how="all", axis=0).dropna(how="all", axis=1)
     return df.reset_index(drop=True)
  
@@ -121,22 +121,29 @@ def _resize_if_large(img, max_dim=2000):
     return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
  
 def _tesseract_image_to_lines(img_gray, psm=3):
-    try:
-        text = pytesseract.image_to_string(img_gray, config=f"--psm {psm}").strip()
-        lines = [line for line in text.splitlines() if line.strip()]
-        return lines
-    except Exception as e:
-        logger.exception("pytesseract failed: %s", e)
-        # fallback to easyocr if available
-        reader = _get_easyocr_reader()
-        if reader:
-            try:
-                res = reader.readtext(img_gray)
-                texts = [t[1] for t in res if t and len(t) > 1]
-                return texts
-            except Exception as e2:
-                logger.exception("easyocr fallback failed: %s", e2)
-        return []
+    # Try default/LSTM engine first to avoid legacy engine errors
+    for oem in [3, 1]:
+        try:
+            text = pytesseract.image_to_string(
+                img_gray, config=f"--psm {psm} --oem {oem}"
+            ).strip()
+            lines = [line for line in text.splitlines() if line.strip()]
+            if lines:
+                return lines
+        except Exception as e:
+            logger.warning("pytesseract oem=%d failed: %s", oem, e)
+            continue
+
+    # fallback to easyocr if available
+    reader = _get_easyocr_reader()
+    if reader:
+        try:
+            res = reader.readtext(img_gray)
+            texts = [t[1] for t in res if t and len(t) > 1]
+            return texts
+        except Exception as e2:
+            logger.exception("easyocr fallback failed: %s", e2)
+    return []
  
 def extract_table_or_text(img, force_text=False, force_table=False, resize_max=2000):
     """

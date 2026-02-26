@@ -24,8 +24,7 @@ router = APIRouter()
 # 🟦 BODY MODELS
 # ---------------------------------------------------------
 class RagasRunBody(BaseModel):
-    session_id: str
-    question: str
+    question: str | dict | None = None
     user_id: int | None = None
  
 # ---------------------------------------------------------
@@ -123,8 +122,10 @@ def get_latest_question(db: Session = Depends(get_db)):
     if not config:
         raise HTTPException(status_code=404, detail="No config found")
  
-    latest_question = config.questions[0] if isinstance(config.questions, list) else config.questions
-    return {"question": latest_question}
+    latest = config.questions[0] if isinstance(config.questions, list) and config.questions else None
+    if isinstance(latest, dict):
+        return {"question": latest.get("question", "")}
+    return {"question": str(latest) if latest else ""}
  
  
 # ---------------------------------------------------------
@@ -139,16 +140,19 @@ def get_ragas_history(db: Session = Depends(get_db)):
     return {
         "session_id": FIXED_SESSION_ID,
         "history": [
-            {"id": r.id, "question": r.question, "created_at": r.created_at, "user_id": r.user_id, "overall_score": r.overall_score, "faithfulness": r.faithfulness, "context_precision": r.context_precision, "context_recall": r.context_recall}
+            {
+                "id": r.id,
+                "question": r.question,
+                "created_at": r.created_at,
+                "user_id": r.user_id,
+                "overall_score": r.overall_score,
+                "faithfulness": r.faithfulness,
+                "context_precision": r.context_precision,
+                "context_recall": r.context_recall
+            }
             for r in records
         ]
     }
- 
-from pydantic import BaseModel
- 
-class RagasRunBody(BaseModel):
-    question: str | None = None
- 
  
 @router.post("/run")
 async def run_ragas(body: RagasRunBody, db: Session = Depends(get_db)):
@@ -163,9 +167,37 @@ async def run_ragas(body: RagasRunBody, db: Session = Depends(get_db)):
     if not config:
         raise HTTPException(status_code=404, detail="No RagasConfig found for the session")
  
-    question = body.question or (config.questions[0] if config.questions else None)
-    if not question:
+    # Determine question and ground truth
+    input_question = body.question
+    ground_truth = None
+ 
+    if input_question:
+        # Resolve if input_question is the object from legacy state
+        if isinstance(input_question, dict):
+            ground_truth = input_question.get("ground_truth")
+            input_question = input_question.get("question")
+        else:
+            # If string, find its ground truth in config
+            if isinstance(config.questions, list):
+                for q_obj in config.questions:
+                    if isinstance(q_obj, dict) and q_obj.get("question") == input_question:
+                        ground_truth = q_obj.get("ground_truth")
+                        break
+    else:
+        # Use first question from config if nothing in body
+        if isinstance(config.questions, list) and config.questions:
+            latest = config.questions[0]
+            if isinstance(latest, dict):
+                input_question = latest.get("question")
+                ground_truth = latest.get("ground_truth")
+            else:
+                input_question = str(latest)
+ 
+    if not input_question:
         raise HTTPException(status_code=422, detail="No question provided or configured")
+ 
+    print(f"[RAGAS-RUN] Using question: {input_question}")
+    print(f"[RAGAS-RUN] Using ground truth: {ground_truth[:100] if ground_truth else 'None'}")
  
     # -----------------------------
     # 2️⃣ Load session texts
@@ -193,7 +225,7 @@ async def run_ragas(body: RagasRunBody, db: Session = Depends(get_db)):
  
     try:
         qa_result = search_and_answer(
-            question,
+            input_question,
             index,
             texts,
             metadata,
@@ -206,17 +238,22 @@ async def run_ragas(body: RagasRunBody, db: Session = Depends(get_db)):
     contexts = qa_result.get("contexts", []) or texts
  
     if not answer.strip():
+        print("[WARN] LLM returned empty answer")
         return {"answer": "", "detail": "LLM returned empty answer"}
+ 
+    print(f"[RAGAS-RUN] Answer obtained: {answer[:100]}...")
  
     # -----------------------------
     # 4️⃣ Run RAGAS metrics (ONLY selected)
     # -----------------------------
     try:
         metrics = await run_ragas_metrics(
-            question=question,
+            question=input_question,
             answer=answer,
-            contexts=contexts
+            contexts=contexts,
+            ground_truth=ground_truth
         )
+        print(f"[RAGAS-RUN] Raw metrics received: {metrics}")
     except Exception as e:
         print(f"[ERROR] RAGAS metrics failed: {e}")
         metrics = {}
@@ -226,44 +263,66 @@ async def run_ragas(body: RagasRunBody, db: Session = Depends(get_db)):
     # Average of selected metrics
     # -----------------------------
     try:
-        selected = [
-            metrics.get("faithfulness"),
-            metrics.get("context_precision"),
-            metrics.get("context_recall"),
-        ]
-        valid = [x for x in selected if x is not None]
-        overall_score = sum(valid) / len(valid) if valid else None
-    except:
+        f = metrics.get("faithfulness")
+        cp = metrics.get("context_precision")
+        cr = metrics.get("context_recall")
+       
+        print(f"[DEBUG] Calculating overall_score from: faithfulness={f}, precision={cp}, recall={cr}")
+       
+        valid = [x for x in [f, cp, cr] if x is not None and not (isinstance(x, float) and math.isnan(x))]
+        if valid:
+            overall_score = sum(valid) / len(valid)
+        else:
+            overall_score = None
+       
+        print(f"[DEBUG] Resulting overall_score: {overall_score}")
+    except Exception as e:
+        print(f"[ERROR] overall_score calculation failed: {e}")
         overall_score = None
  
     # -----------------------------
     # 6️⃣ Save to RagHistory
     # -----------------------------
+    def sanitize_float(val):
+        """Convert NaN or non-float to None for database and JSON safety."""
+        if val is None: return None
+        try:
+            fval = float(val)
+            if math.isnan(fval) or math.isinf(fval):
+                return None
+            return fval
+        except:
+            return None
+ 
     history_entry = RagHistory(
         session_id=FIXED_SESSION_ID,
-        user_id=config.user_id,
-        question=question,
-        faithfulness=metrics.get("faithfulness"),
-        context_precision=metrics.get("context_precision"),
-        context_recall=metrics.get("context_recall"),
-        overall_score=overall_score
+        user_id=body.user_id or config.user_id,
+        question=input_question,
+        answer=answer,
+        ground_truth=ground_truth,
+        faithfulness=sanitize_float(metrics.get("faithfulness")),
+        context_precision=sanitize_float(metrics.get("context_precision")),
+        context_recall=sanitize_float(metrics.get("context_recall")),
+        overall_score=sanitize_float(overall_score)
     )
     db.add(history_entry)
     db.commit()
     db.refresh(history_entry)
  
-    print("[RAGAS-RUN] Metrics saved to DB")
+    print(f"[RAGAS-RUN] Metrics saved to DB for question: {input_question[:50]}...")
  
-    return {
-        "question": question,
-        "answer": answer,
-        "contexts": contexts,
-        "metrics": {
-            "faithfulness": metrics.get("faithfulness"),
-            "context_precision": metrics.get("context_precision"),
-            "context_recall": metrics.get("context_recall"),
-            "overall_score": overall_score,
-        }
+    # Final sanitization for JSON response
+    safe_metrics = {
+        "faithfulness": sanitize_float(metrics.get("faithfulness")),
+        "context_precision": sanitize_float(metrics.get("context_precision")),
+        "context_recall": sanitize_float(metrics.get("context_recall")),
+        "overall_score": sanitize_float(overall_score),
     }
  
- 
+    return {
+        "question": input_question,
+        "answer": answer,
+        "ground_truth": ground_truth,
+        "contexts": contexts,
+        "metrics": safe_metrics
+    }

@@ -104,9 +104,13 @@ class RagasConfig(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String(50), unique=True, nullable=False)
     user_id = Column(Integer, nullable=True)
-    questions = Column(JSON, nullable=True)
-    model = Column(String(50), default="gpt-4o-mini")
+    questions = Column(JSON, nullable=True) # List of {question, ground_truth}
+    model = Column(String(50), default="gpt-4o-mini") # Generation model
+    evaluation_llm = Column(String(50), default="gpt-4o-mini")
+    embedding_model = Column(String(100), default="text-embedding-3-small")
     top_k = Column(Integer, default=3)
+    temperature = Column(Float, default=0.0)
+    dataset_label = Column(String(255), nullable=True)
     file_name = Column(String(255), nullable=True)
  
  
@@ -123,17 +127,26 @@ class Group(Base):
  
 class RagHistory(Base):
     __tablename__ = "rag_history"
- 
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(String)
-    user_id = Column(String)
-    question = Column(String)
- 
-    # Only the metrics we are keeping
-    faithfulness = Column(DECIMAL(10,8))
-    context_precision = Column(DECIMAL(10,8))
-    context_recall = Column(DECIMAL(10,8))
-    overall_score = Column(DECIMAL(10,8))
+    evaluation_id = Column(String(50), unique=True, nullable=True, index=True)
+    session_id = Column(String(100))
+    user_id = Column(String(100))
+    user_name = Column(String(255))
+    dataset_label = Column(String(255))
+    model_name = Column(String(100)) # Generation model
+    evaluation_llm = Column(String(100))
+    embedding_model = Column(String(100))
+    top_k = Column(Integer)
+    question = Column(Text) # Main question or summary
+    answer = Column(Text)
+    ground_truth = Column(Text)
+    faithfulness = Column(Float)
+    answer_relevancy = Column(Float)
+    context_precision = Column(Float)
+    context_recall = Column(Float)
+    overall_score = Column(Float)
+    raw_results = Column(JSON) # Detailed per-question metrics
     created_at = Column(TIMESTAMP, server_default=func.now())
  
  

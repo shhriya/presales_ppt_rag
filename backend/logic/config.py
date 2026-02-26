@@ -38,5 +38,5 @@ if not GEMINI_API_KEY:
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Default text + embedding models
-GEMINI_CHAT_MODEL = "models/gemini-flash-latest"
+GEMINI_CHAT_MODEL = "models/gemini-2.5-flash"
 GEMINI_EMBED_MODEL = "models/gemini-embedding-001"
